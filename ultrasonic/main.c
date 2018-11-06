@@ -13,24 +13,91 @@
 #include "nrf_pwr_mgmt.h"
 #include "nrf_serial.h"
 #include "software_interrupt.h"
-//#include "gpio.h"
+#include "nrf_drv_timer.h"
 
 #include "buckler.h"
+#include "gpiote.h"
 
 // LED = pin 25, 24, 23
+#define US0_PIN 23
+#define US1_PIN 24
+#define US2_PIN 25
 
-static int times = 0;
+// Ultrasonic time keeping
+static const nrf_drv_timer_t US_timer = NRFX_TIMER_INSTANCE(1);
+//  static const nrf_drv_timer_t US_disable_timer = NRFX_TIMER_INSTANCE(1);
+static const nrf_drv_timer_config_t timer_cfg = {
+    .frequency          = NRF_TIMER_FREQ_1MHz,
+    .mode               = NRF_TIMER_MODE_TIMER,
+    .bit_width          = NRF_TIMER_BIT_WIDTH_32,
+    .interrupt_priority = NRFX_TIMER_DEFAULT_CONFIG_IRQ_PRIORITY,
+    .p_context          = NULL,
+};
+
+static uint32_t disable_interval = 0;
+static uint32_t detection_interval = 0;
+
+static uint32_t US_time[3] = {0, 0, 0};
+static uint32_t time_offset01, time_offset02, time_offset12;
 
 void SWI1_EGU1_IRQHandler(void) {
     NRF_EGU1->EVENTS_TRIGGERED[0] = 0;
 }
 
 void GPIOTE_IRQHandler(void) {
-    NRF_GPIOTE->EVENTS_IN[0] = 0;
-	nrf_delay_ms(40);
-	printf("Ultrasonic detected %i\n", times);
-	times += 1;
-    nrf_gpio_pin_toggle(BUCKLER_LED0);
+    uint32_t last_detection;
+    if (NRF_GPIOTE->EVENTS_IN[0]) {
+        NRF_GPIOTE->EVENTS_IN[0] = 0;
+        NRF_GPIOTE->INTENCLR = 1;
+        US_time[0] = nrfx_timer_capture(&US_timer, NRF_TIMER_CC_CHANNEL0);
+        last_detection = US_timer[0];
+        nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL0, US_time[0] + disable_interval, 1);
+    }
+    if (NRF_GPIOTE->EVENTS_IN[1]) {
+        NRF_GPIOTE->EVENTS_IN[1] = 0;
+        NRF_GPIOTE->INTENCLR = 2;
+        US_time[1] = nrfx_timer_capture(&US_timer, NRF_TIMER_CC_CHANNEL0);
+        last_detection = US_timer[1];
+        nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL1, US_time[1] + disable_interval, 1);
+    }
+    if (NRF_GPIOTE->EVENTS_IN[2]) {
+        NRF_GPIOTE->EVENTS_IN[2] = 0;
+        NRF_GPIOTE->INTENCLR = 4;
+        US_time[2] = nrfx_timer_capture(&US_timer, NRF_TIMER_CC_CHANNEL0);
+        last_detection = US_timer[2];
+        nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL2, US_time[2] + disable_interval, 1);
+    }
+
+    nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL3, last_detection + detection_interval, 1);
+
+    //__disable_irq();
+    // calculate_time_offset();
+    //__enable_irq();
+
+}
+
+void calculate_time_offset(void) {
+    printf("US0: %d, US1: %d, US2: %d\n", US_time[0]/1000000, US_time[1]/1000000, US_time[2]/1000000);
+}
+
+static void US_timer_event_handler(nrf_timer_event_t event_type, void* p_context) {
+  // turn on interrupt
+    if (TIMER1->EVENTS_COMPARE[0]) {
+        TIMER1->EVENTS_COMPARE[0] = 0;
+        NRF_GPIOTE->INTENSET = 1;
+    }
+    if (TIMER1->EVENTS_COMPARE[1]) {
+        TIMER1->EVENTS_COMPARE[1] = 0;
+        NRF_GPIOTE->INTENSET = 2;
+    }
+    if (TIMER1->EVENTS_COMPARE[2]) {
+        TIMER1->EVENTS_COMPARE[2] = 0;
+        NRF_GPIOTE->INTENSET = 4;
+    }
+    if (TIMER1->EVENTS_COMPARE[3]) {
+        TIMER1->EVENTS_COMPARE[3] = 0;
+        calculate_time_offset();
+    }
 }
 
 int main(void) {
@@ -42,16 +109,35 @@ int main(void) {
   NRF_LOG_DEFAULT_BACKENDS_INIT();
   printf("Log initialized!\n");
 
-  //gpio_config(25, OUTPUT);
+  // Set LED for debugging
   nrf_gpio_pin_dir_set(BUCKLER_LED0, NRF_GPIO_PIN_DIR_OUTPUT);
+  nrf_gpio_pin_dir_set(BUCKLER_LED1, NRF_GPIO_PIN_DIR_OUTPUT);
+  nrf_gpio_pin_dir_set(BUCKLER_LED2, NRF_GPIO_PIN_DIR_OUTPUT);
 
-  //NRF_GPIOTE->CONFIG[0] = 0x21c01;
-  NRF_GPIOTE->CONFIG[0] = 0x10401;
+  // Initialize interrupts
+  NRF_GPIOTE->CONFIG[0] = MODE_EVENT | US0_PIN << PSEL_POS | POLARITY_LOTOHI << POLARITY_POS;
+  NRF_GPIOTE->CONFIG[1] = MODE_EVENT | US1_PIN << PSEL_POS | POLARITY_LOTOHI << POLARITY_POS;
+  NRF_GPIOTE->CONFIG[2] = MODE_EVENT | US2_PIN << PSEL_POS | POLARITY_LOTOHI << POLARITY_POS;
   NRF_GPIOTE->INTENSET = 1;
+
   NVIC_EnableIRQ(GPIOTE_IRQn);
+
+
+  // Initialize timer
+  error_code = nrfx_timer_init(&US_timer, &timer_cfg, US_timer_event_handler);
+  APP_ERROR_CHECK(error_code);
+  // error_code = nrfx_timer_init(&US_disable_timer, &timer_cfg, US_disable_timer_event_handler);
+  // APP_ERROR_CHECK(error_code);
+  disable_interval = nrfx_timer_ms_to_ticks(&US_timer, 20);
+  detection_interval = nrfx_timer_us_to_ticks(&US_timer, 1000);
+  nrfx_timer_clear(&US_timer);
+  nrfx_timer_enable(&US_timer);
+
+  
 
   // loop forever
   while (1) {
-    nrf_delay_ms(500);
+    // nrf_delay_ms(500);
+    __WFI();
   }
 }
