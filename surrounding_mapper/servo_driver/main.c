@@ -1,14 +1,15 @@
-// servo_driver
-// init example code
+// Blink app
+//
+// Blinks the LEDs on Buckler
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include "app_error.h"
-#include "app_timer.h"
 #include "nrf.h"
 #include "nrf_delay.h"
+#include "nrfx_gpiote.h"
 #include "nrf_gpio.h"
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -17,47 +18,105 @@
 #include "nrf_serial.h"
 
 #include "buckler.h"
-#include "virtual_timer.h"
 
-// sample toggle function
-void led0_toggle() {
-    nrf_gpio_pin_toggle(BUCKLER_LED0);
+#include <stdio.h>
+#include <string.h>
+#include "nrf_drv_pwm.h"
+#include "app_util_platform.h"
+#include "app_error.h"
+#include "boards.h"
+#include "bsp.h"
+#include "nrf_drv_clock.h"
+#include "nrf_delay.h"
+
+
+#define OUTPUT_PIN 16//BUCKLER_LED0
+
+static nrf_drv_pwm_t m_pwm0 = NRF_DRV_PWM_INSTANCE(0);
+
+// Declare variables holding PWM sequence values. In this example only one channel is used
+nrf_pwm_values_individual_t seq_values[] = {0, 0, 0, 0};
+nrf_pwm_sequence_t const seq =
+{
+    .values.p_individual = seq_values,
+    .length          = NRF_PWM_VALUES_LENGTH(seq_values),
+    .repeats         = 0,
+    .end_delay       = 0
+};
+
+
+// Set duty cycle between 0 and 100%
+void pwm_update_duty_cycle(uint8_t duty_cycle)
+{
+
+    // Check if value is outside of range. If so, set to 100%
+    seq_values->channel_0 = 2500-((int)duty_cycle * 25);
+
+    nrf_drv_pwm_simple_playback(&m_pwm0, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
 }
 
-void pwm_up_counter_example(void) {
-  // example code from nRF data sheet p496 shows the counter operating in up (MODE=PWM_MODE_Up) mode with three PWM channels with the same frequency but different duty cycle. The counter is automatically reset to zero when COUNTERTOP is reached and OUT[n] will invert. OUT[n] is held low if the compare value is 0 and held high respectively if set to COUNTERTOP given that the polarity is set to FallingEdge. Running in up counter mode will result in pulse widths that are edge-aligned. See the code example below:
+static void pwm_init(void)
+{
+    nrf_drv_pwm_config_t const config0 =
+    {
+        .output_pins =
+        {
+            OUTPUT_PIN, // channel 0
+            NRF_DRV_PWM_PIN_NOT_USED,             // channel 1
+            NRF_DRV_PWM_PIN_NOT_USED,             // channel 2
+            NRF_DRV_PWM_PIN_NOT_USED,             // channel 3
+        },
+        .irq_priority = APP_IRQ_PRIORITY_LOWEST,
+        .base_clock   = NRF_PWM_CLK_125kHz,
+        .count_mode   = NRF_PWM_MODE_UP,
+        .top_value    = 2500,
+        .load_mode    = NRF_PWM_LOAD_INDIVIDUAL,
+        .step_mode    = NRF_PWM_STEP_AUTO
+    };
+    // Init PWM without error handler
+    APP_ERROR_CHECK(nrf_drv_pwm_init(&m_pwm0, &config0, NULL));
 
-  uint16_t pwm_seq[4] = {PWM_CH0_DUTY, PWM_CH1_DUTY, PWM_CH2_DUTY, PWM_CH3_DUTY};
-  NRF_PWM0->PSEL.OUT[0] = (first_pin << PWM_PSEL_OUT_PIN_Pos) | (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);
-  NRF_PWM0->PSEL.OUT[1] = (second_pin << PWM_PSEL_OUT_PIN_Pos) | (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);
-  NRF_PWM0->ENABLE = (PWM_ENABLE_ENABLE_Enabled << PWM_ENABLE_ENABLE_Pos);
-  NRF_PWM0->MODE = (PWM_MODE_UPDOWN_Up << PWM_MODE_UPDOWN_Pos);
-  NRF_PWM0->PRESCALER = (PWM_PRESCALER_PRESCALER_DIV_1 << PWM_PRESCALER_PRESCALER_Pos);
-  NRF_PWM0->COUNTERTOP = (16000 << PWM_COUNTERTOP_COUNTERTOP_Pos); //1 msec
-  NRF_PWM0->LOOP = (PWM_LOOP_CNT_Disabled << PWM_LOOP_CNT_Pos);
-  NRF_PWM0->DECODER = (PWM_DECODER_LOAD_Individual << PWM_DECODER_LOAD_Pos) | (PWM_DECODER_MODE_RefreshCount << PWM_DECODER_MODE_Pos);
-  NRF_PWM0->SEQ[0].PTR = ((uint32_t)(pwm_seq) << PWM_SEQ_PTR_PTR_Pos);
-  NRF_PWM0->SEQ[0].CNT = ((sizeof(pwm_seq) / sizeof(uint16_t)) << PWM_SEQ_CNT_CNT_Pos);
-  NRF_PWM0->SEQ[0].REFRESH = 0;
-  NRF_PWM0->SEQ[0].ENDDELAY = 0;
-  NRF_PWM0->TASKS_SEQSTART[0] = 1;
 }
 
 int main(void) {
-  // init code from lab
   ret_code_t error_code = NRF_SUCCESS;
 
-  // initialize RTT library
-  error_code = NRF_LOG_INIT(NULL);
-  APP_ERROR_CHECK(error_code);
-  NRF_LOG_DEFAULT_BACKENDS_INIT();
-  printf("Board initialized!\n");
-
-  // set gipo pin (change BUCKLER_LED0 to desire pin)
-  nrf_gpio_pin_dir_set(BUCKLER_LED0, NRF_GPIO_PIN_DIR_OUTPUT);
-
-  // loop forever
-  while (1) {
-    nrf_delay_ms(1000);
+  // initialize GPIO driver
+  if (!nrfx_gpiote_is_init()) {
+    error_code = nrfx_gpiote_init();
   }
+  APP_ERROR_CHECK(error_code);
+
+  // configure leds
+  // manually-controlled (simple) output, initially set
+  nrfx_gpiote_out_config_t out_config = NRFX_GPIOTE_CONFIG_OUT_SIMPLE(true);
+  error_code = nrfx_gpiote_out_init(OUTPUT_PIN, &out_config);
+  APP_ERROR_CHECK(error_code);
+
+  // Start clock for accurate frequencies
+    NRF_CLOCK->TASKS_HFCLKSTART = 1;
+    // Wait for clock to start
+    while(NRF_CLOCK->EVENTS_HFCLKSTARTED == 0)
+        ;
+
+    pwm_init();
+
+    while (1)
+    {
+        // for(int i = 5; i <= 10; i++)
+        // {
+        //     pwm_update_duty_cycle(i);
+        //     nrf_delay_ms(100);
+        // }
+        // for(int i = 9; i > 5; i--)
+        // {
+        //     pwm_update_duty_cycle(i);
+        //     nrf_delay_ms(100);
+        // }
+        pwm_update_duty_cycle(5);
+        nrf_delay_ms(500);
+        pwm_update_duty_cycle(10);
+        nrf_delay_ms(500);
+    }
+    //pwm_update_duty_cycle(5);
 }
