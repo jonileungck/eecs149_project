@@ -18,10 +18,10 @@
 #include "buckler.h"
 #include "gpiote.h"
 
-// LED = pin 25, 24, 23
-#define US0_PIN 23
-#define US1_PIN 24
-#define US2_PIN 25
+// LED = pin 25, 24, 23 or can do BUCKLER_LED0, BUCKLER_LED1, BUCKLER_LED2
+#define US0_PIN BUCKLER_GROVE_A0
+#define US1_PIN BUCKLER_GROVE_A1
+#define US2_PIN BUCKLER_GROVE_D1
 
 // Ultrasonic time keeping
 static const nrf_drv_timer_t US_timer = NRFX_TIMER_INSTANCE(1);
