@@ -43,7 +43,7 @@ int main(void) {
   while (1) {
     for (int i=0; i<3; i++) {
       nrf_gpio_pin_toggle(LEDS[i]);
-      nrf_delay_ms(500);
+      nrf_delay_ms(100);
     }
   }
 }
