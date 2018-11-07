@@ -12,7 +12,7 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_pwr_mgmt.h"
 #include "nrf_serial.h"
-#include "software_interrupt.h"
+
 #include "nrf_drv_timer.h"
 
 #include "buckler.h"
@@ -33,7 +33,7 @@ static const nrf_drv_timer_config_t timer_cfg = {
     .p_context          = NULL,
 };
 
-static uint32_t US_disable_interval = 0;
+static uint32_t US_disable_interval = 1;
 static uint32_t US_detection_interval = 0;
 
 static uint32_t US_time[3] = {0, 0, 0};
@@ -49,21 +49,21 @@ void GPIOTE_IRQHandler(void) {
         NRF_GPIOTE->EVENTS_IN[0] = 0;
         NRF_GPIOTE->INTENCLR = 1;
         US_time[0] = nrfx_timer_capture(&US_timer, NRF_TIMER_CC_CHANNEL0);
-        last_detection = US_timer[0];
+        last_detection = US_time[0];
         nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL0, US_time[0] + US_disable_interval, 1);
     }
     if (NRF_GPIOTE->EVENTS_IN[1]) {
         NRF_GPIOTE->EVENTS_IN[1] = 0;
         NRF_GPIOTE->INTENCLR = 2;
         US_time[1] = nrfx_timer_capture(&US_timer, NRF_TIMER_CC_CHANNEL0);
-        last_detection = US_timer[1];
+        last_detection = US_time[1];
         nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL1, US_time[1] + US_disable_interval, 1);
     }
     if (NRF_GPIOTE->EVENTS_IN[2]) {
         NRF_GPIOTE->EVENTS_IN[2] = 0;
         NRF_GPIOTE->INTENCLR = 4;
         US_time[2] = nrfx_timer_capture(&US_timer, NRF_TIMER_CC_CHANNEL0);
-        last_detection = US_timer[2];
+        last_detection = US_time[2];
         nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL2, US_time[2] + US_disable_interval, 1);
     }
 
@@ -78,25 +78,27 @@ void GPIOTE_IRQHandler(void) {
 
 void calculate_time_offset(void) {
     printf("US0: %d, US1: %d, US2: %d\n", US_time[0]/1000000, US_time[1]/1000000, US_time[2]/1000000);
-    US_time = {0, 0, 0};
+    US_time[0] = 0;
+    US_time[1] = 0;
+    US_time[2] = 0;
 }
 
 static void US_timer_event_handler(nrf_timer_event_t event_type, void* p_context) {
   // turn on interrupt
-    if (TIMER1->EVENTS_COMPARE[0]) {
-        TIMER1->EVENTS_COMPARE[0] = 0;
+    if (NRF_TIMER1->EVENTS_COMPARE[0]) {
+        NRF_TIMER1->EVENTS_COMPARE[0] = 0;
         NRF_GPIOTE->INTENSET = 1;
     }
-    if (TIMER1->EVENTS_COMPARE[1]) {
-        TIMER1->EVENTS_COMPARE[1] = 0;
+    if (NRF_TIMER1->EVENTS_COMPARE[1]) {
+        NRF_TIMER1->EVENTS_COMPARE[1] = 0;
         NRF_GPIOTE->INTENSET = 2;
     }
-    if (TIMER1->EVENTS_COMPARE[2]) {
-        TIMER1->EVENTS_COMPARE[2] = 0;
+    if (NRF_TIMER1->EVENTS_COMPARE[2]) {
+        NRF_TIMER1->EVENTS_COMPARE[2] = 0;
         NRF_GPIOTE->INTENSET = 4;
     }
-    if (TIMER1->EVENTS_COMPARE[3]) {
-        TIMER1->EVENTS_COMPARE[3] = 0;
+    if (NRF_TIMER1->EVENTS_COMPARE[3]) {
+        NRF_TIMER1->EVENTS_COMPARE[3] = 0;
         calculate_time_offset();
     }
 }
