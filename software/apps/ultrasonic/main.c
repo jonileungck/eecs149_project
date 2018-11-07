@@ -75,6 +75,7 @@ static int counts = 0;
 
 void calculate_time_offset(void) {
     printf("%d: US0: %d, US1: %d, US2: %d\n", counts, US_time[0]/1000000, US_time[1]/1000000, US_time[2]/1000000);
+    counts += 1;
     // US_time[0] = 0;
     // US_time[1] = 0;
     // US_time[2] = 0;
