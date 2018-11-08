@@ -83,19 +83,23 @@ void calculate_time_offset(void) {
 
 static void US_timer_event_handler(nrf_timer_event_t event_type, void* p_context) {
   // turn on interrupt
-    if (NRF_TIMER1->EVENTS_COMPARE[0]) {
-        NRF_TIMER1->EVENTS_COMPARE[0] = 0;
+    printf("Timer event in\n");
+    if (NRF_TIMER0->EVENTS_COMPARE[0]) {
+        NRF_TIMER0->EVENTS_COMPARE[0] = 0;
         // NRF_GPIOTE->INTENSET = 1;
+        printf("Timer US0\n");
         nrfx_gpiote_in_event_enable(US0_PIN, true);
     }
     if (NRF_TIMER1->EVENTS_COMPARE[1]) {
         NRF_TIMER1->EVENTS_COMPARE[1] = 0;
         // NRF_GPIOTE->INTENSET = 1 << 1;
+        printf("Timer US1\n");
         nrfx_gpiote_in_event_enable(US1_PIN, true);
     }
     if (NRF_TIMER1->EVENTS_COMPARE[2]) {
         NRF_TIMER1->EVENTS_COMPARE[2] = 0;
         // NRF_GPIOTE->INTENSET = 1 << 2;
+        printf("Timer US2\n");
         nrfx_gpiote_in_event_enable(US2_PIN, true);
     }
     if (NRF_TIMER1->EVENTS_COMPARE[3]) {
@@ -111,6 +115,7 @@ void US0_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL0, US_time[0] + US_disable_interval, true);
     nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL3, US_time[0] + US_detection_interval, true);
     nrf_drv_gpiote_out_toggle(BUCKLER_LED0);
+    printf("US0 triggered\n");
     // calculate_time_offset();
 }
 
@@ -121,6 +126,7 @@ void US1_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL1, US_time[1] + US_disable_interval, true);
     nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL3, US_time[1] + US_detection_interval, true);
     nrf_drv_gpiote_out_toggle(BUCKLER_LED1);
+    printf("US1 triggered\n");
     // calculate_time_offset();
 }
 
@@ -131,6 +137,7 @@ void US2_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL2, US_time[2] + US_disable_interval, true);
     nrfx_timer_compare(&US_timer, NRF_TIMER_CC_CHANNEL3, US_time[2] + US_detection_interval, true);
     nrf_drv_gpiote_out_toggle(BUCKLER_LED2);
+    printf("US2 triggered\n");
     // calculate_time_offset();
 }
 
