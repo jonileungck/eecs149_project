@@ -1,6 +1,4 @@
-// Blink app
-//
-// Blinks the LEDs on Buckler
+// Code based on Button and Switch on the Buckler repo
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -18,8 +16,22 @@
 #include "nrf_serial.h"
 
 #include "buckler.h"
+#define NUM_US 4
 
 static uint8_t LEDS[3] = {BUCKLER_LED0, BUCKLER_LED1, BUCKLER_LED2};
+static uint8_t US[NUM_US] = {BUCKLER_GROVE_A0, BUCKLER_GROVE_D0, BUCKLER_SENSORS_SCL, BUCKLER_UART_TX};
+
+void set_US_pins(void) {
+  for (int i=0; i<NUM_US; i++) {
+    nrfx_gpiote_out_set(US[i]);
+  }
+}
+
+void clear_US_pins(void) {
+  for (int i=0; i<NUM_US; i++) {
+    nrfx_gpiote_out_clear(US[i]);
+  }
+}
 
 // handler called whenever an input pin changes
 void pin_change_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
@@ -27,10 +39,10 @@ void pin_change_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     case BUCKLER_BUTTON0: {
       if (nrfx_gpiote_in_is_set(BUCKLER_BUTTON0)) {
         nrfx_gpiote_out_set(LEDS[0]);
-        nrfx_gpiote_out_clear(BUCKLER_GROVE_A0);
+        clear_US_pins();
       } else {
         nrfx_gpiote_out_clear(LEDS[0]);
-        nrfx_gpiote_out_set(BUCKLER_GROVE_A0);
+        set_US_pins();
       }
       break;
     }
@@ -83,8 +95,10 @@ int main(void) {
 
 
   // configure ultrasonic transmitter
-  error_code = nrfx_gpiote_out_init(BUCKLER_GROVE_A0, &out_config);
-  APP_ERROR_CHECK(error_code);
+  for (int i=0; i<NUM_US; i++) {
+    error_code = nrfx_gpiote_out_init(US[i], &out_config);
+    APP_ERROR_CHECK(error_code);
+  }
 
   // set initial states for LEDs
   nrfx_gpiote_out_set(LEDS[0]);
@@ -102,9 +116,9 @@ int main(void) {
       __WFI();
     } else {
       nrf_gpio_pin_toggle(BUCKLER_LED0);
-      nrf_gpio_pin_set(BUCKLER_GROVE_A0);
+      set_US_pins();
       nrf_delay_ms(1);
-      nrf_gpio_pin_clear(BUCKLER_GROVE_A0);
+      clear_US_pins();
       nrf_delay_ms(99);
     }
   }

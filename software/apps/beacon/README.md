@@ -1,6 +1,9 @@
 Ultrasonic Beacon  
 ==============
 
+Based on  
+https://github.com/lab11/buckler/tree/master/software/apps/button_and_switch
+
 Gives a trigger pulse to drive the Grove Ultrasonic range finder and ignore the response.  
 The trigger signal goes out through pins A0, D0, SCL, and TX all at the same time.  
 
