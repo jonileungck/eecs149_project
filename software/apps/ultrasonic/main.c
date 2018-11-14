@@ -176,7 +176,7 @@ int main(void) {
 
   // Initialize ultrasonic interrupts
   nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);
-  in_config.pull = NRF_GPIO_PIN_NOPULL;
+  in_config.pull = NRF_GPIO_PIN_PULLDOWN;
 
   error_code = nrfx_gpiote_in_init(US0_PIN, &in_config, US0_handler);
   nrfx_gpiote_in_event_enable(US0_PIN, true);
