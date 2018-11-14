@@ -41,14 +41,10 @@ int main(void) {
 
   // loop forever
   while (1) {
-    // for (int i=0; i<3; i++) {
-    //   nrf_gpio_pin_toggle(LEDS[i]);
-    //   nrf_delay_ms(100);
-    // } 
-    nrf_gpio_pin_clear(BUCKLER_LED0);
-    nrf_delay_ms(35);
-    nrf_gpio_pin_set(BUCKLER_LED0);
-    nrf_delay_ms(500);
+    for (int i=0; i<3; i++) {
+      nrf_gpio_pin_toggle(LEDS[i]);
+      nrf_delay_ms(100);
+    } 
   }
 }
 
