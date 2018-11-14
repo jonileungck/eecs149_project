@@ -2,7 +2,7 @@ Detective
 ==============
 
 Our master beacon-following robot  
-
+```
                    *** ### ### ***  
                *##                 ##*  
            *##           US2           ##*  
@@ -24,3 +24,4 @@ Our master beacon-following robot
            *##                         ##*  
                *##                 ##*  
                    *** ### ### ***  
+```
