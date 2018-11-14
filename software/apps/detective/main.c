@@ -1,3 +1,6 @@
+// Our master beacon-following robot
+
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -6,23 +9,39 @@
 #include "app_timer.h"
 #include "nrf.h"
 #include "nrf_delay.h"
-#include "nrf_log.h"
 #include "nrfx_gpiote.h"
+#include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 #include "nrf_pwr_mgmt.h"
-#include "nrf_serial.h"
+#include "nrf_drv_spi.h"
 #include "nrf_drv_timer.h"
 #include "nrf_drv_clock.h"
 
 #include "buckler.h"
+#include "display.h"
+#include "kobukiActuator.h"
+#include "kobukiSensorPoll.h"
+#include "kobukiSensorTypes.h"
+#include "kobukiUtilities.h"
+#include "mpu9250.h"
 
+// Ultrasonic pins
 #define US0_PIN BUCKLER_GROVE_A0
 #define US1_PIN BUCKLER_GROVE_A1
 #define US2_PIN BUCKLER_GROVE_D1
 
+typedef enum {
+  OFF,
+  DRIVING,
+  TURNING,
+} robot_state_t;
+
 // LED array
 static uint8_t LEDS[3] = {BUCKLER_LED0, BUCKLER_LED1, BUCKLER_LED2};
+
+// I2C manager
+NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
 
 // Ultrasonic detection time keeping
 static const nrf_drv_timer_t detection_timer = NRFX_TIMER_INSTANCE(1);
@@ -46,14 +65,17 @@ static uint32_t offset_update_ticks = APP_TIMER_TICKS(2);
 
 static uint32_t US_times[3] = {0, 0, 0};
 static int time_offset01, time_offset02, time_offset12;
+static bool timer_offsets_ready = false;
 
 static int counts = 0;
 
+static char print_str[16]; 
 
 void calculate_time_offset(void) {
     time_offset01 = US_times[0] - US_times[1];
     time_offset02 = US_times[0] - US_times[2];
     time_offset12 = US_times[1] - US_times[2];
+    timer_offsets_ready = true;
     ++counts;
     //printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
     printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
@@ -67,6 +89,7 @@ void US0_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   US_times[0] = nrfx_timer_capture(&detection_timer, NRF_TIMER_CC_CHANNEL0);
   nrfx_gpiote_in_event_disable(US0_PIN);
   nrfx_gpiote_out_clear(LEDS[0]);
+  timer_offsets_ready = false;
 
   ret_code_t error_code = app_timer_start(disable_timer0, disable_ticks, NULL);
   APP_ERROR_CHECK(error_code);
@@ -79,6 +102,7 @@ void US1_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   US_times[1] = nrfx_timer_capture(&detection_timer, NRF_TIMER_CC_CHANNEL1);
   nrfx_gpiote_in_event_disable(US1_PIN);
   nrfx_gpiote_out_clear(LEDS[1]);
+  timer_offsets_ready = false;
 
   ret_code_t error_code = app_timer_start(disable_timer1, disable_ticks, NULL);
   APP_ERROR_CHECK(error_code);
@@ -91,6 +115,7 @@ void US2_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   US_times[2] = nrfx_timer_capture(&detection_timer, NRF_TIMER_CC_CHANNEL2);
   nrfx_gpiote_in_event_disable(US2_PIN);
   nrfx_gpiote_out_clear(LEDS[2]);
+  timer_offsets_ready = false;
 
   ret_code_t error_code = app_timer_start(disable_timer2, disable_ticks, NULL);
   APP_ERROR_CHECK(error_code);
@@ -155,6 +180,22 @@ static void create_app_timers(void) {
   APP_ERROR_CHECK(error_code);
 }
 
+float calculate_target_angle(void) {
+  if (time_offset01 < -150) {
+    return -15;
+  } else if (time_offset01 > 150) {
+    return 15;
+  } else if (time_offset02 < -700) {
+    if (time_offset01 < 0) {
+      return -180;
+    } else {
+      return 180;
+    }
+  } else {
+    return 0;
+  }
+}
+
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
 
@@ -176,6 +217,35 @@ int main(void) {
     APP_ERROR_CHECK(error_code);
     nrfx_gpiote_out_set(LEDS[i]);
   }
+
+  // initialize display
+  nrf_drv_spi_t spi_instance = NRF_DRV_SPI_INSTANCE(1);
+  nrf_drv_spi_config_t spi_config = {
+    .sck_pin = BUCKLER_LCD_SCLK,
+    .mosi_pin = BUCKLER_LCD_MOSI,
+    .miso_pin = BUCKLER_LCD_MISO,
+    .ss_pin = BUCKLER_LCD_CS,
+    .irq_priority = NRFX_SPI_DEFAULT_CONFIG_IRQ_PRIORITY,
+    .orc = 0,
+    .frequency = NRF_DRV_SPI_FREQ_4M,
+    .mode = NRF_DRV_SPI_MODE_2,
+    .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
+  };
+  error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
+  APP_ERROR_CHECK(error_code);
+  display_init(&spi_instance);
+  display_write("Hello, Human!", DISPLAY_LINE_0);
+  printf("Display initialized!\n");
+
+  // initialize i2c master (two wire interface)
+  nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
+  i2c_config.scl = BUCKLER_SENSORS_SCL;
+  i2c_config.sda = BUCKLER_SENSORS_SDA;
+  i2c_config.frequency = NRF_TWIM_FREQ_100K;
+  error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
+  APP_ERROR_CHECK(error_code);
+  mpu9250_init(&twi_mngr_instance);
+  printf("IMU initialized!\n");
 
   // Initialize ultrasonic interrupts
   nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);
@@ -206,9 +276,97 @@ int main(void) {
   APP_ERROR_CHECK(error_code);
   create_app_timers();
 
-  printf("All initializations success.\n");
-  // loop forever
+  // initialize Kobuki
+  kobukiInit();
+  printf("Kobuki initialized!\n");
+
+  // configure initial state
+  robot_state_t state = OFF;
+  KobukiSensors_t sensors = {0};
+
+  float target_angle;
+  float current_angle;
+
+  // loop forever, running state machine
   while (1) {
-    __WFI();
+    // read sensors from robot
+    kobukiSensorPoll(&sensors);
+
+    // delay before continuing
+    // Note: removing this delay will make responses quicker, but will result
+    //  in printf's in this loop breaking JTAG
+    nrf_delay_ms(100);
+
+    // handle states
+    switch(state) {
+      case OFF: {
+        // transition logic
+        if (is_button_pressed(&sensors)) {
+          state = DRIVING;
+        } else {
+          // perform state-specific actions here
+          display_write("OFF", DISPLAY_LINE_0);
+          kobukiDriveDirect(0, 0);
+          state = OFF;
+        }
+        break; // each case needs to end with break!
+      }
+
+      case DRIVING: {
+        // transition logic
+        if (is_button_pressed(&sensors)) {
+          state = OFF;
+        } else if (timer_offsets_ready) {
+          target_angle = calculate_target_angle();
+          snprintf(print_str, 16, "%f", target_angle);
+          display_write(print_str, DISPLAY_LINE_1);
+          if (abs(target_angle) > 5) {
+            current_angle = 0;
+            mpu9250_start_gyro_integration();
+            state = TURNING;
+          } else {
+            state = DRIVING;
+          }
+        } else {
+          // perform state-specific actions here
+          display_write("DRIVING", DISPLAY_LINE_0);
+          kobukiDriveDirect(100, 100);
+          state = DRIVING;
+        }
+        break; // each case needs to end with break!
+      }
+
+      case TURNING: {
+        if (is_button_pressed(&sensors)) {
+          target_angle = 0;
+          current_angle = 0;
+          state = OFF;
+        } else {
+          //display_write("TURNING", DISPLAY_LINE_0);
+          current_angle = mpu9250_read_gyro_integration().z_axis;
+          snprintf(print_str, 16, "%f", target_angle);
+          display_write(print_str, DISPLAY_LINE_0);
+          snprintf(print_str, 16, "%f", current_angle);
+          display_write(print_str, DISPLAY_LINE_1);
+          if (target_angle > 0 && target_angle - current_angle > 2) {
+            kobukiDriveDirect(-100, 100);
+            state = TURNING;
+          } else if (target_angle < 0 && target_angle - current_angle < -2) {
+            kobukiDriveDirect(100, -100);
+            state = TURNING;
+          } else {
+            mpu9250_stop_gyro_integration();
+            target_angle = 0;
+            current_angle = 0;
+            state = DRIVING;
+          }
+        }
+        break;
+      }
+
+      // add other cases here
+
+    }
   }
 }
+
