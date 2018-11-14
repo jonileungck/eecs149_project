@@ -102,20 +102,20 @@ void offset_update_timer_event_handler(void* p_context) {
 
 void disable_timer0_event_handler(void* p_context) {
   // turn on interrupt
-  nrf_gpio_pin_set(LEDS[0]);
   nrfx_gpiote_in_event_enable(US0_PIN, true);
+  nrf_gpio_pin_set(LEDS[0]);
 }
 
 void disable_timer1_event_handler(void* p_context) {
   // turn on interrupt
-  nrf_gpio_pin_set(LEDS[1]);
   nrfx_gpiote_in_event_enable(US1_PIN, true);
+  nrf_gpio_pin_set(LEDS[1]);
 }
 
 void disable_timer2_event_handler(void* p_context) {
   // turn on interrupt
-  nrf_gpio_pin_set(LEDS[2]);
   nrfx_gpiote_in_event_enable(US2_PIN, true);
+  nrf_gpio_pin_set(LEDS[2]);
 }
 
 // Function starting the internal LFCLK oscillator.
@@ -203,6 +203,7 @@ int main(void) {
   APP_ERROR_CHECK(error_code);
   create_app_timers();
 
+  printf("All initializations success.\n");
   // loop forever
   while (1) {
     __WFI();
