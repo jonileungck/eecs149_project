@@ -91,9 +91,8 @@ int main(void) {
   nrfx_gpiote_in_event_enable(BUCKLER_BUTTON0, true);
   APP_ERROR_CHECK(error_code);
 
-  // Initialize app timer by first requesting LFCLK
+  // Initialize app timer
   lfclk_request();
-  // Initialize the application timer module.
   error_code = app_timer_init();
   APP_ERROR_CHECK(error_code);
 
