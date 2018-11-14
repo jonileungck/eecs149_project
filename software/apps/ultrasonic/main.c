@@ -13,11 +13,9 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_pwr_mgmt.h"
 #include "nrf_serial.h"
-#include "software_interrupt.h"
 #include "nrf_drv_timer.h"
 
 #include "buckler.h"
-#include "gpiote.h"
 
 #define US0_PIN BUCKLER_GROVE_A0
 #define US1_PIN BUCKLER_GROVE_A1
