@@ -69,8 +69,8 @@ void calculate_time_offset(void) {
   time_offset02 = US_times[0] - US_times[2];
   time_offset12 = US_times[1] - US_times[2];
   ++counts;
-  //printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
-  printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
+  // printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
+  // printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
   __enable_irq();
 }
 
@@ -271,5 +271,6 @@ int main(void) {
   // loop forever
   while (1) {
     __WFI();
+    printf("Angle: %f\n", calculate_target_angle());
   }
 }
