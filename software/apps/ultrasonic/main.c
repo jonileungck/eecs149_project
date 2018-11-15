@@ -16,6 +16,7 @@
 #include "nrf_drv_timer.h"
 #include "nrf_drv_clock.h"
 
+#include "display.h"
 #include "buckler.h"
 
 // Ultrasonic pins
@@ -27,6 +28,9 @@
 #define pi 3.1415926535897932
 #define rad_to_deg 180 / pi
 #define speed_of_sound 330
+
+// For printing with display
+static char print_str[16];
 
 // Separations between US0-1, 1-2, 2-0. Need to be measured when testing.
 static float US_separations[3] = {10, 10, 10};
@@ -185,6 +189,10 @@ float calculate_target_angle(void) {
     angle = -angle;
   }
   angle -= 90;
+  snprintf(print_str, 16, "%f", time_offset01);
+  display_write(print_str, DISPLAY_LINE_0);
+  snprintf(print_str, 16, "%f", angle);
+  display_write(print_str, DISPLAY_LINE_1);
   __enable_irq();
   return angle;
 }
@@ -210,6 +218,25 @@ int main(void) {
     APP_ERROR_CHECK(error_code);
     nrfx_gpiote_out_set(LEDS[i]);
   }
+
+  // initialize display
+  nrf_drv_spi_t spi_instance = NRF_DRV_SPI_INSTANCE(1);
+  nrf_drv_spi_config_t spi_config = {
+    .sck_pin = BUCKLER_LCD_SCLK,
+    .mosi_pin = BUCKLER_LCD_MOSI,
+    .miso_pin = BUCKLER_LCD_MISO,
+    .ss_pin = BUCKLER_LCD_CS,
+    .irq_priority = NRFX_SPI_DEFAULT_CONFIG_IRQ_PRIORITY,
+    .orc = 0,
+    .frequency = NRF_DRV_SPI_FREQ_4M,
+    .mode = NRF_DRV_SPI_MODE_2,
+    .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
+  };
+  error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
+  APP_ERROR_CHECK(error_code);
+  display_init(&spi_instance);
+  display_write("Hello, Human!", DISPLAY_LINE_0);
+  printf("Display initialized!\n");
 
   // Initialize ultrasonic interrupts
   nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);

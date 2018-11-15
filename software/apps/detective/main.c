@@ -77,7 +77,7 @@ static bool timer_offsets_ready = false;
 
 static int counts = 0;
 
-static char print_str[16]; 
+static char print_str[16];
 
 void calculate_time_offset(void) {
   __disable_irq();
