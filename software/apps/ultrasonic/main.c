@@ -168,8 +168,19 @@ static void create_app_timers(void) {
 
 float calculate_target_angle(void) {
   __disable_irq();
-  float angle;
-  angle = acos(time_offset01 * speed_of_sound / US_separations[0]) * rad_to_deg;
+  float angle, ratio;
+  ratio = time_offset01 / 1000000 * speed_of_sound / US_separations[0];
+  // When ready to deploy, replace if cases with these two lines.
+  // ratio = ratio > 1 ? 1 : ratio;
+  // ratio = ratio < -1 ? -1 : ratio;
+  if (ratio > 1) {
+    ratio = 1;
+    printf("Time offset out of range: %lu\n", time_offset01);
+  } else if (ratio < -1) {
+    ratio = -1;
+    printf("Time offset out of range: %lu\n", time_offset01);
+  }
+  angle = acos(ratio) * rad_to_deg;
   if (time_offset02 > 100) {
     angle = -angle;
   }
