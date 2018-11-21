@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "app_error.h"
 #include "app_timer.h"
@@ -15,11 +16,24 @@
 #include "nrf_drv_timer.h"
 #include "nrf_drv_clock.h"
 
+#include "display.h"
 #include "buckler.h"
 
+// Ultrasonic pins
 #define US0_PIN BUCKLER_GROVE_A0
 #define US1_PIN BUCKLER_GROVE_A1
 #define US2_PIN BUCKLER_GROVE_D1
+
+// Calculation parameters
+#define pi 3.1415926535897932
+#define rad_to_deg 180 / pi
+#define speed_of_sound 330
+
+// For printing with display
+static char print_str[16];
+
+// Separations between US0-1, 1-2, 2-0. Need to be measured when testing.
+static float US_separations[3] = {10, 10, 10};
 
 // LED array
 static uint8_t LEDS[3] = {BUCKLER_LED0, BUCKLER_LED1, BUCKLER_LED2};
@@ -49,14 +63,15 @@ static int time_offset01, time_offset02, time_offset12;
 
 static int counts = 0;
 
-
 void calculate_time_offset(void) {
-    time_offset01 = US_times[0] - US_times[1];
-    time_offset02 = US_times[0] - US_times[2];
-    time_offset12 = US_times[1] - US_times[2];
-    ++counts;
-    //printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
-    printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
+  __disable_irq();
+  time_offset01 = US_times[0] - US_times[1];
+  time_offset02 = US_times[0] - US_times[2];
+  time_offset12 = US_times[1] - US_times[2];
+  ++counts;
+  // printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
+  // printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
+  __enable_irq();
 }
 
 void detection_timer_event_handler(nrf_timer_event_t event_type, void *p_context) {
@@ -155,6 +170,33 @@ static void create_app_timers(void) {
   APP_ERROR_CHECK(error_code);
 }
 
+float calculate_target_angle(void) {
+  __disable_irq();
+  float angle, ratio;
+  ratio = time_offset01 / 1000000 * speed_of_sound / US_separations[0];
+  // When ready to deploy, replace if cases with these two lines.
+  // ratio = ratio > 1 ? 1 : ratio;
+  // ratio = ratio < -1 ? -1 : ratio;
+  if (ratio > 1) {
+    ratio = 1;
+    printf("Time offset out of range: %lu\n", time_offset01);
+  } else if (ratio < -1) {
+    ratio = -1;
+    printf("Time offset out of range: %lu\n", time_offset01);
+  }
+  angle = acos(ratio) * rad_to_deg;
+  if (time_offset02 > 100) {
+    angle = -angle;
+  }
+  angle -= 90;
+  snprintf(print_str, 16, "%f", time_offset01);
+  display_write(print_str, DISPLAY_LINE_0);
+  snprintf(print_str, 16, "%f", angle);
+  display_write(print_str, DISPLAY_LINE_1);
+  __enable_irq();
+  return angle;
+}
+
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
 
@@ -176,6 +218,25 @@ int main(void) {
     APP_ERROR_CHECK(error_code);
     nrfx_gpiote_out_set(LEDS[i]);
   }
+
+  // initialize display
+  nrf_drv_spi_t spi_instance = NRF_DRV_SPI_INSTANCE(1);
+  nrf_drv_spi_config_t spi_config = {
+    .sck_pin = BUCKLER_LCD_SCLK,
+    .mosi_pin = BUCKLER_LCD_MOSI,
+    .miso_pin = BUCKLER_LCD_MISO,
+    .ss_pin = BUCKLER_LCD_CS,
+    .irq_priority = NRFX_SPI_DEFAULT_CONFIG_IRQ_PRIORITY,
+    .orc = 0,
+    .frequency = NRF_DRV_SPI_FREQ_4M,
+    .mode = NRF_DRV_SPI_MODE_2,
+    .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
+  };
+  error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
+  APP_ERROR_CHECK(error_code);
+  display_init(&spi_instance);
+  display_write("Hello, Human!", DISPLAY_LINE_0);
+  printf("Display initialized!\n");
 
   // Initialize ultrasonic interrupts
   nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);
@@ -210,5 +271,6 @@ int main(void) {
   // loop forever
   while (1) {
     __WFI();
+    printf("Angle: %f\n", calculate_target_angle());
   }
 }

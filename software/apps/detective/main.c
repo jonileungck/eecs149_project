@@ -31,6 +31,14 @@
 #define US1_PIN BUCKLER_GROVE_A1
 #define US2_PIN BUCKLER_GROVE_D1
 
+// Calculation parameters
+#define pi 3.1415926535897932
+#define rad_to_deg 180 / pi
+#define speed_of_sound 330
+
+// Separations between US0-1, 1-2, 2-0. Need to be measured when testing.
+static float US_separations[3] = {10, 10, 10};
+
 typedef enum {
   OFF,
   DRIVING,
@@ -69,16 +77,17 @@ static bool timer_offsets_ready = false;
 
 static int counts = 0;
 
-static char print_str[16]; 
+static char print_str[16];
 
 void calculate_time_offset(void) {
-    time_offset01 = US_times[0] - US_times[1];
-    time_offset02 = US_times[0] - US_times[2];
-    time_offset12 = US_times[1] - US_times[2];
-    timer_offsets_ready = true;
-    ++counts;
-    //printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
-    printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
+  __disable_irq();
+  time_offset01 = US_times[0] - US_times[1];
+  time_offset02 = US_times[0] - US_times[2];
+  time_offset12 = US_times[1] - US_times[2];
+  ++counts;
+  //printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
+  printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
+  __enable_irq();
 }
 
 void detection_timer_event_handler(nrf_timer_event_t event_type, void *p_context) {
@@ -181,19 +190,15 @@ static void create_app_timers(void) {
 }
 
 float calculate_target_angle(void) {
-  if (time_offset01 < -150) {
-    return -15;
-  } else if (time_offset01 > 150) {
-    return 15;
-  } else if (time_offset02 < -700) {
-    if (time_offset01 < 0) {
-      return -180;
-    } else {
-      return 180;
-    }
-  } else {
-    return 0;
+  __disable_irq();
+  float angle;
+  angle = acos(time_offset01 * speed_of_sound / US_separations[0]) * rad_to_deg;
+  if (time_offset02 > 100) {
+    angle = -angle;
   }
+  angle -= 90;
+  __enable_irq();
+  return angle;
 }
 
 int main(void) {
