@@ -31,7 +31,7 @@
 #define disable_time_ms 35
 #define offset_update_time_ms 2
 
-// Separations in meters between US0-1, 1-2, 2-0. Need to be measured when testing.
+// Separations in meters between US0-1, 0-2, 1-2. Need to be measured when testing.
 static float US_separations[3] = {.20, .20, .20};
 
 // For printing with display
@@ -192,16 +192,16 @@ float calculate_target_angle(void) {
   printf("Ratio: %f\n", ratio);
   angle = acos(ratio) * rad_to_deg;
   printf("raw angle: %f\n", angle);
-  angle = 90 - angle;
-  if (time_offset02 < -500) {
+  angle = angle - 90;
+  if (time_offset02 < -US_separations[1] * speed_of_sound / 2 && time_offset12 < 0) {
     angle -= 90;
-  } else if (time_offset12 < -500) {
+  } else if (time_offset02 < 0 && time_offset12 < -US_separations[2] * speed_of_sound / 2) {
     angle += 90;
   }
   snprintf(print_str, 16, "%f", time_offset01);
-  //display_write(print_str, DISPLAY_LINE_0);
+  display_write(print_str, DISPLAY_LINE_0);
   snprintf(print_str, 16, "%f", angle);
-  //display_write(print_str, DISPLAY_LINE_1);
+  display_write(print_str, DISPLAY_LINE_1);
   //__enable_irq();
   return angle;
 }
@@ -228,24 +228,24 @@ int main(void) {
     nrfx_gpiote_out_set(LEDS[i]);
   }
 
-  // // initialize display
-  // nrf_drv_spi_t spi_instance = NRF_DRV_SPI_INSTANCE(1);
-  // nrf_drv_spi_config_t spi_config = {
-  //   .sck_pin = BUCKLER_LCD_SCLK,
-  //   .mosi_pin = BUCKLER_LCD_MOSI,
-  //   .miso_pin = BUCKLER_LCD_MISO,
-  //   .ss_pin = BUCKLER_LCD_CS,
-  //   .irq_priority = NRFX_SPI_DEFAULT_CONFIG_IRQ_PRIORITY,
-  //   .orc = 0,
-  //   .frequency = NRF_DRV_SPI_FREQ_4M,
-  //   .mode = NRF_DRV_SPI_MODE_2,
-  //   .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
-  // };
-  // error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
-  // APP_ERROR_CHECK(error_code);
-  // display_init(&spi_instance);
-  // display_write("Hello, Human!", DISPLAY_LINE_0);
-  // printf("Display initialized!\n");
+  // initialize display
+  nrf_drv_spi_t spi_instance = NRF_DRV_SPI_INSTANCE(1);
+  nrf_drv_spi_config_t spi_config = {
+    .sck_pin = BUCKLER_LCD_SCLK,
+    .mosi_pin = BUCKLER_LCD_MOSI,
+    .miso_pin = BUCKLER_LCD_MISO,
+    .ss_pin = BUCKLER_LCD_CS,
+    .irq_priority = NRFX_SPI_DEFAULT_CONFIG_IRQ_PRIORITY,
+    .orc = 0,
+    .frequency = NRF_DRV_SPI_FREQ_4M,
+    .mode = NRF_DRV_SPI_MODE_2,
+    .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
+  };
+  error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
+  APP_ERROR_CHECK(error_code);
+  display_init(&spi_instance);
+  display_write("Hello, Human!", DISPLAY_LINE_0);
+  printf("Display initialized!\n");
 
   // Initialize timer
   error_code = nrfx_timer_init(&detection_timer, &timer_cfg, detection_timer_event_handler);
