@@ -115,11 +115,13 @@ int main(void) {
     if (nrfx_gpiote_in_is_set(BUCKLER_SWITCH0)) {
       __WFI();
     } else {
-      nrf_gpio_pin_toggle(BUCKLER_LED0);
+      nrf_gpio_pin_clear(BUCKLER_LED0);
       set_US_pins();
       nrf_delay_ms(1);
       clear_US_pins();
-      nrf_delay_ms(99);
+      nrf_delay_ms(100);
+      nrf_gpio_pin_set(BUCKLER_LED0);
+      nrf_delay_ms(399);
     }
   }
 }

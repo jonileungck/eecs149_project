@@ -51,6 +51,8 @@ static uint8_t LEDS[3] = {BUCKLER_LED0, BUCKLER_LED1, BUCKLER_LED2};
 // I2C manager
 NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
 
+
+// ========== Ultrasonic parts starts here ==========
 // Ultrasonic detection time keeping
 static const nrf_drv_timer_t detection_timer = NRFX_TIMER_INSTANCE(1);
 
@@ -200,6 +202,8 @@ float calculate_target_angle(void) {
   __enable_irq();
   return angle;
 }
+
+// ========== Ultrasonic parts ends here ==========
 
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
