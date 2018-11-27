@@ -121,7 +121,7 @@ int main(void) {
       clear_US_pins();
       nrf_delay_ms(100);
       nrf_gpio_pin_set(BUCKLER_LED0);
-      nrf_delay_ms(399);
+      nrf_delay_ms(899);
     }
   }
 }

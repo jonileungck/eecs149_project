@@ -35,9 +35,14 @@
 #define pi 3.1415926535897932
 #define rad_to_deg 180 / pi
 #define speed_of_sound 330
+#define disable_time_ms 35
+#define offset_update_time_ms 2
 
 // Separations between US0-1, 1-2, 2-0. Need to be measured when testing.
-static float US_separations[3] = {10, 10, 10};
+static float US_separations[3] = {.20, .20, .20};
+
+// For printing with display
+static char print_str[16];
 
 typedef enum {
   OFF,
@@ -54,7 +59,7 @@ NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
 
 // ========== Ultrasonic parts starts here ==========
 // Ultrasonic detection time keeping
-static const nrf_drv_timer_t detection_timer = NRFX_TIMER_INSTANCE(1);
+static const nrf_drv_timer_t detection_timer = NRFX_TIMER_INSTANCE(2);
 
 static const nrf_drv_timer_config_t timer_cfg = {
     .frequency          = NRF_TIMER_FREQ_1MHz,
@@ -70,26 +75,26 @@ APP_TIMER_DEF(disable_timer1);
 APP_TIMER_DEF(disable_timer2);
 APP_TIMER_DEF(offset_update_timer);
 
-static uint32_t disable_ticks = APP_TIMER_TICKS(35);
-static uint32_t offset_update_ticks = APP_TIMER_TICKS(2);
+
+static uint32_t disable_ticks = APP_TIMER_TICKS(disable_time_ms);
+static uint32_t offset_update_ticks = APP_TIMER_TICKS(offset_update_time_ms);
 
 static uint32_t US_times[3] = {0, 0, 0};
 static int time_offset01, time_offset02, time_offset12;
-static bool timer_offsets_ready = false;
 
 static int counts = 0;
 
-static char print_str[16];
+static bool timer_offsets_ready = false;
 
 void calculate_time_offset(void) {
-  __disable_irq();
+  //__disable_irq();
   time_offset01 = US_times[0] - US_times[1];
   time_offset02 = US_times[0] - US_times[2];
   time_offset12 = US_times[1] - US_times[2];
   ++counts;
-  //printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
-  printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
-  __enable_irq();
+  // printf("%i: US0: %lu, US1: %lu, US2: %lu\n", counts, US_times[0], US_times[1], US_times[2]);
+  // printf("%i: 01: %i, 02: %i, 12: %i\n", counts, time_offset01, time_offset02, time_offset12);
+  //__enable_irq();
 }
 
 void detection_timer_event_handler(nrf_timer_event_t event_type, void *p_context) {
@@ -99,7 +104,7 @@ void detection_timer_event_handler(nrf_timer_event_t event_type, void *p_context
 void US0_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   US_times[0] = nrfx_timer_capture(&detection_timer, NRF_TIMER_CC_CHANNEL0);
   nrfx_gpiote_in_event_disable(US0_PIN);
-  nrfx_gpiote_out_clear(LEDS[0]);
+  nrfx_gpiote_out_clear(LEDS[2]);
   timer_offsets_ready = false;
 
   ret_code_t error_code = app_timer_start(disable_timer0, disable_ticks, NULL);
@@ -112,7 +117,7 @@ void US0_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
 void US1_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   US_times[1] = nrfx_timer_capture(&detection_timer, NRF_TIMER_CC_CHANNEL1);
   nrfx_gpiote_in_event_disable(US1_PIN);
-  nrfx_gpiote_out_clear(LEDS[1]);
+  nrfx_gpiote_out_clear(LEDS[0]);
   timer_offsets_ready = false;
 
   ret_code_t error_code = app_timer_start(disable_timer1, disable_ticks, NULL);
@@ -125,7 +130,7 @@ void US1_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
 void US2_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
   US_times[2] = nrfx_timer_capture(&detection_timer, NRF_TIMER_CC_CHANNEL2);
   nrfx_gpiote_in_event_disable(US2_PIN);
-  nrfx_gpiote_out_clear(LEDS[2]);
+  nrfx_gpiote_out_clear(LEDS[1]);
   timer_offsets_ready = false;
 
   ret_code_t error_code = app_timer_start(disable_timer2, disable_ticks, NULL);
@@ -137,24 +142,25 @@ void US2_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
 
 void offset_update_timer_event_handler(void* p_context) {
   calculate_time_offset();
+  timer_offsets_ready = true;
 }
 
 void disable_timer0_event_handler(void* p_context) {
   // turn on interrupt
   nrfx_gpiote_in_event_enable(US0_PIN, true);
-  nrfx_gpiote_out_set(LEDS[0]);
+  nrfx_gpiote_out_set(LEDS[2]);
 }
 
 void disable_timer1_event_handler(void* p_context) {
   // turn on interrupt
   nrfx_gpiote_in_event_enable(US1_PIN, true);
-  nrfx_gpiote_out_set(LEDS[1]);
+  nrfx_gpiote_out_set(LEDS[0]);
 }
 
 void disable_timer2_event_handler(void* p_context) {
   // turn on interrupt
   nrfx_gpiote_in_event_enable(US2_PIN, true);
-  nrfx_gpiote_out_set(LEDS[2]);
+  nrfx_gpiote_out_set(LEDS[1]);
 }
 
 // Function starting the internal LFCLK oscillator.
@@ -192,21 +198,46 @@ static void create_app_timers(void) {
 }
 
 float calculate_target_angle(void) {
-  __disable_irq();
-  float angle;
-  angle = acos(time_offset01 * speed_of_sound / US_separations[0]) * rad_to_deg;
-  if (time_offset02 > 100) {
-    angle = -angle;
+  //__disable_irq();
+  float angle, ratio;
+  ratio = -time_offset01 * speed_of_sound / US_separations[0] / 1000000;
+  // When ready to deploy, replace if cases with these two lines.
+  ratio = ratio > 1 ? 1 : ratio;
+  ratio = ratio < -1 ? -1 : ratio;
+  // printf("Ratio: %f\n", ratio);
+  angle = acos(ratio) * rad_to_deg;
+  // printf("raw angle: %f\n", angle);
+  snprintf(print_str, 16, "%f", angle);
+  display_write(print_str, DISPLAY_LINE_0);
+  angle = angle - 90;
+  if (time_offset02 < -US_separations[1] * speed_of_sound / 2 && time_offset12 < 0) {
+    angle -= 90;
+  } else if (time_offset02 < 0 && time_offset12 < -US_separations[2] * speed_of_sound / 2) {
+    angle += 90;
   }
-  angle -= 90;
-  __enable_irq();
-  return angle;
+
+  if (time_offset02 < 0 && time_offset12 < 0) {
+    if (angle > 0) {
+      angle += 90;
+    } else {
+      angle -= 90;
+    }
+  }
+  snprintf(print_str, 16, "%f", angle);
+  display_write(print_str, DISPLAY_LINE_1);
+  //__enable_irq();
+  return angle/2;
 }
 
 // ========== Ultrasonic parts ends here ==========
 
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
+  // Initialize timer
+  error_code = nrfx_timer_init(&detection_timer, &timer_cfg, detection_timer_event_handler);
+  APP_ERROR_CHECK(error_code);
+  nrfx_timer_clear(&detection_timer);
+  nrfx_timer_enable(&detection_timer);
 
   // initialize RTT library
   error_code = NRF_LOG_INIT(NULL);
@@ -272,13 +303,6 @@ int main(void) {
   nrfx_gpiote_in_event_enable(US2_PIN, true);
   APP_ERROR_CHECK(error_code);
 
-
-  // Initialize timer
-  error_code = nrfx_timer_init(&detection_timer, &timer_cfg, detection_timer_event_handler);
-  APP_ERROR_CHECK(error_code);
-  nrfx_timer_clear(&detection_timer);
-  nrfx_timer_enable(&detection_timer);
-
   // Initialize app timer
   lfclk_request();
   error_code = app_timer_init();
@@ -326,14 +350,16 @@ int main(void) {
         if (is_button_pressed(&sensors)) {
           state = OFF;
         } else if (timer_offsets_ready) {
+          timer_offsets_ready = false;
           target_angle = calculate_target_angle();
           snprintf(print_str, 16, "%f", target_angle);
           display_write(print_str, DISPLAY_LINE_1);
-          if (abs(target_angle) > 5) {
+          if (target_angle > 10 || target_angle < -10) {
             current_angle = 0;
             mpu9250_start_gyro_integration();
             state = TURNING;
           } else {
+            display_write("AHEAD", DISPLAY_LINE_1);
             state = DRIVING;
           }
         } else {
@@ -357,10 +383,10 @@ int main(void) {
           display_write(print_str, DISPLAY_LINE_0);
           snprintf(print_str, 16, "%f", current_angle);
           display_write(print_str, DISPLAY_LINE_1);
-          if (target_angle > 0 && target_angle - current_angle > 2) {
+          if (target_angle > 0 && target_angle - current_angle > 5) {
             kobukiDriveDirect(-100, 100);
             state = TURNING;
-          } else if (target_angle < 0 && target_angle - current_angle < -2) {
+          } else if (target_angle < 0 && target_angle - current_angle < -5) {
             kobukiDriveDirect(100, -100);
             state = TURNING;
           } else {

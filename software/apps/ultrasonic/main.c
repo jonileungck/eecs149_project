@@ -175,35 +175,44 @@ static void create_app_timers(void) {
 float calculate_target_angle(void) {
   //__disable_irq();
   if (time_offset02 > offset_update_time_ms * 1000) {
+    display_write("-----", DISPLAY_LINE_1);
     return 0;
   }
   float angle, ratio;
-  ratio = time_offset01 * speed_of_sound / US_separations[0] / 1000000;
+  ratio = -time_offset01 * speed_of_sound / US_separations[0] / 1000000;
   // When ready to deploy, replace if cases with these two lines.
   // ratio = ratio > 1 ? 1 : ratio;
   // ratio = ratio < -1 ? -1 : ratio;
   if (ratio > 1) {
     ratio = 1;
-    printf("Time offset out of range: %lu\n", time_offset01);
+    printf("Time offset out of range: %i\n", time_offset01);
   } else if (ratio < -1) {
     ratio = -1;
-    printf("Time offset out of range: %lu\n", time_offset01);
+    printf("Time offset out of range: %i\n", time_offset01);
   }
   printf("Ratio: %f\n", ratio);
   angle = acos(ratio) * rad_to_deg;
   printf("raw angle: %f\n", angle);
+  snprintf(print_str, 16, "%f", angle);
+  display_write(print_str, DISPLAY_LINE_0);
   angle = angle - 90;
   if (time_offset02 < -US_separations[1] * speed_of_sound / 2 && time_offset12 < 0) {
     angle -= 90;
   } else if (time_offset02 < 0 && time_offset12 < -US_separations[2] * speed_of_sound / 2) {
     angle += 90;
   }
-  snprintf(print_str, 16, "%f", time_offset01);
-  display_write(print_str, DISPLAY_LINE_0);
+
+  if (time_offset02 < 0 && time_offset12 < 0) {
+    if (angle > 0) {
+      angle += 90;
+    } else {
+      angle -= 90;
+    }
+  }
   snprintf(print_str, 16, "%f", angle);
   display_write(print_str, DISPLAY_LINE_1);
   //__enable_irq();
-  return angle;
+  return angle/1.5;
 }
 
 int main(void) {
