@@ -8,10 +8,11 @@ import { Chart } from 'chart.js';
 export class HomePage {
 
   public data: number[] = [20, 15, 20, 20,20, 15, 20, 20,20, 15];
-  public labelsArr: int[] = Array.from(Array(10).keys());
+  public labelsArr: number[] = Array.from(Array(10).keys());
   public coptions: any;
   public myChart: any;
   public ctx: any;
+  public chart: any;
 
   @ViewChild('myChart', {read: ElementRef}) public ctxEl: ElementRef;
 
