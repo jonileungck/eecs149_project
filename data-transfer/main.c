@@ -32,9 +32,9 @@ void route()
 
     ROUTE_GET("/")
     {
-        printf("HTTP/1.1 200 OK\r\n\r\n");
+        printf("HTTP/1.1 200 OK\r\naccess-control-allow-origin: http://127.0.0.1:3000\r\n");
         // printf("%s\n", request_header("User-Agent"));
-        printf("{'data':[%u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u]}", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11]);
+        printf("{\"data\":[%u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u]}", data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11]);
     }
 
     ROUTE_POST("/")
