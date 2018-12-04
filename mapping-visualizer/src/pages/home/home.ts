@@ -1,5 +1,7 @@
 import { Component, ViewChild, ElementRef } from '@angular/core';
+import { Platform } from 'ionic-angular';
 import { Chart } from 'chart.js';
+import { BLE } from '@ionic-native/ble';
 
 @Component({
   selector: 'page-home',
@@ -16,7 +18,51 @@ export class HomePage {
 
   @ViewChild('myChart', {read: ElementRef}) public ctxEl: ElementRef;
 
-  public constructor() {
+  public constructor(public plt: Platform, private ble: BLE) {
+    plt.ready().then(() => {
+      console.log("Scanning devices..");
+      ble.startScan([]).subscribe({
+        next: function(device) {
+          if(device.id == "C0:98:E5:49:00:01") {
+            ble.stopScan();
+            console.log("Found buckler!");
+            console.log(JSON.stringify(device));
+            console.log("Connecting to buckler..");
+            ble.connect(device.id).subscribe({
+              data: function(data){console.log(data)},
+              error: function(e) {
+                console.log(JSON.stringify(e));
+              }
+            });
+            //ble.read()
+          }
+        },
+        error: function(e) {
+          console.log(JSON.stringify(e));
+        }
+      });
+      // let scanObserver = ble.scan([], 5);
+      // scanObserver.subscribe({
+      //   next: device => {
+      //     if(device.id == this.bucklerMac) {
+      //       console.log('Connecting to device: ' + device.id);
+      //       // let connectObserver = ble.connect(device.id);
+      //       // connectObserver.subscribe({
+      //       //
+      //       // });
+      //       ble.read(device.id, "", "",
+      //         function(data){
+      //             console.log("Hooray we have data"+JSON.stringify(data));
+      //             alert("Successfully read data from device."+JSON.stringify(data));
+      //         },
+      //         function(failure){
+      //             alert("Failed to read characteristic from device.");
+      //         }
+      //       );
+      //     }
+      //   },
+      // });
+    });
   }
 
   public ngAfterViewInit(): any {
