@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <!-- <script src="showchart.js"></script> -->
+
+</head>
+<body>
+    <h1> Radar Char </h1>
+
+    <canvas id="myChart" width="400" height="400"></canvas>
+
+    <script>
+      var data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      var labelsArr = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+      var ctx = document.getElementById("myChart");
+      var myChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labelsArr,
+            datasets: [{
+                label: 'Mapping',
+                data,
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgb(255, 99, 132)'
+            }]
+        },
+        options: {
+          scale: {
+            ticks: {
+              beginAtZero: true,
+              max: 250
+            }
+          }
+        }
+    });
+
+    setInterval(function(){
+        $.ajax({url: "http://127.0.0.1:12913", success: function(result){
+          myChart.data.datasets[0].data = result.data;
+          myChart.update();
+          console.log(result.data);
+        }});
+     }, 1000);
+
+    </script>
+</body>
+
+<html>

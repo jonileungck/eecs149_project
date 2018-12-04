@@ -1,8 +1,0 @@
-{
-  "name": "mapping-visualizer",
-  "integrations": {
-    "cordova": {}
-  },
-  "type": "ionic-angular",
-  "id": "1b50636f"
-}
