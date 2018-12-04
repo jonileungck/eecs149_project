@@ -29,10 +29,10 @@ void serve_forever(const char *PORT)
 {
     struct sockaddr_in clientaddr;
     socklen_t addrlen;
-    char c;    
-    
+    char c;
+
     int slot=0;
-    
+
     printf(
             "Server started %shttp://127.0.0.1:%s%s\n",
             "\033[92m",PORT,"\033[0m"
@@ -43,7 +43,7 @@ void serve_forever(const char *PORT)
     for (i=0; i<CONNMAX; i++)
         clients[i]=-1;
     startServer(PORT);
-    
+
     // Ignore SIGCHLD to avoid zombie threads
     signal(SIGCHLD,SIG_IGN);
 
@@ -63,6 +63,9 @@ void serve_forever(const char *PORT)
             {
                 respond(slot);
                 exit(0);
+            } else {
+              close(clients[slot]);
+              clients[slot]=-1;
             }
         }
 
@@ -141,10 +144,10 @@ void respond(int n)
 
         method = strtok(buf,  " \t\r\n");
         uri    = strtok(NULL, " \t");
-        prot   = strtok(NULL, " \t\r\n"); 
+        prot   = strtok(NULL, " \t\r\n");
 
         fprintf(stderr, "\x1b[32m + [%s] %s\x1b[0m\n", method, uri);
-        
+
         if (qs = strchr(uri, '?'))
         {
             *qs++ = '\0'; //split URI
@@ -166,7 +169,7 @@ void respond(int n)
             if (t[1] == '\r' && t[2] == '\n') break;
         }
         t++; // now the *t shall be the beginning of user payload
-        t2 = request_header("Content-Length"); // and the related header if there is  
+        t2 = request_header("Content-Length"); // and the related header if there is
         payload = t;
         payload_size = t2 ? atol(t2) : (rcvd-(t-buf));
 
