@@ -90,26 +90,29 @@ void servo_start(void) {
     nrf_timer_task_trigger(NRF_TIMER2, NRF_TIMER_TASK_START);
 }
 
-int main(void) {
-  ret_code_t error_code = NRF_SUCCESS;
+void buckler_init() {
+    ret_code_t error_code = NRF_SUCCESS;
 
-  // initialize GPIO driver
-  if (!nrfx_gpiote_is_init()) {
-    error_code = nrfx_gpiote_init();
-  }
-  APP_ERROR_CHECK(error_code);
+    // initialize GPIO driver
+    if (!nrfx_gpiote_is_init()) {
+      error_code = nrfx_gpiote_init();
+    }
+    APP_ERROR_CHECK(error_code);
 
-  // configure leds
-  // manually-controlled (simple) output, initially set
-  nrfx_gpiote_out_config_t out_config = NRFX_GPIOTE_CONFIG_OUT_SIMPLE(true);
-  error_code = nrfx_gpiote_out_init(OUTPUT_PIN, &out_config);
-  APP_ERROR_CHECK(error_code);
+    // configure leds
+    // manually-controlled (simple) output, initially set
+    nrfx_gpiote_out_config_t out_config = NRFX_GPIOTE_CONFIG_OUT_SIMPLE(true);
+    error_code = nrfx_gpiote_out_init(OUTPUT_PIN, &out_config);
+    APP_ERROR_CHECK(error_code);
 
-  // Start clock for accurate frequencies
+    // Start clock for accurate frequencies
     NRF_CLOCK->TASKS_HFCLKSTART = 1;
     // Wait for clock to start
     while(NRF_CLOCK->EVENTS_HFCLKSTARTED == 0)
         ;
+}
 
+int main(void) {
+    buckler_init();
     servo_start();
 }
