@@ -35,11 +35,11 @@ nrf_pwm_sequence_t const seq =
 
 
 // Set duty cycle between 0 and 100%
-void pwm_update_duty_cycle(uint8_t duty_cycle)
+void pwm_update_duty_cycle(double duty_cycle)
 {
 
     // Check if value is outside of range. If so, set to 100%
-    seq_values->channel_0 = 2500-((int)duty_cycle * 25);
+    seq_values->channel_0 = 2500-(int)(duty_cycle * 25);
 
     nrf_drv_pwm_simple_playback(&m_pwm0, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
 }
@@ -68,17 +68,18 @@ void pwm_init(void)
 
 int mode = 0;
 void TIMER2_IRQHandler(void) {
-    // if(mode == 0) {
-    //   pwm_update_duty_cycle(5);
-    // } else if(mode == 2) {
-    //   pwm_update_duty_cycle(10);
-    // }
+    if(mode == 0) {
+      pwm_update_duty_cycle(5.5);
+    } else if(mode == 2) {
+      pwm_update_duty_cycle(10);
+    }
     nrf_timer_event_clear(NRF_TIMER2, NRF_TIMER_EVENT_COMPARE0);
     nrf_timer_task_trigger(NRF_TIMER2, NRF_TIMER_TASK_CLEAR);
     mode = (mode + 1) % 4;
 }
 
-void timer_init(void) {
+void servo_start(void) {
+    pwm_init();
     NVIC_EnableIRQ(TIMER2_IRQn);
     nrf_timer_mode_set(NRF_TIMER2,NRF_TIMER_MODE_TIMER);
     nrf_timer_bit_width_set(NRF_TIMER2, NRF_TIMER_BIT_WIDTH_32);
@@ -110,28 +111,5 @@ int main(void) {
     while(NRF_CLOCK->EVENTS_HFCLKSTARTED == 0)
         ;
 
-    pwm_init();
-    timer_init();
-
-    pwm_update_duty_cycle(6);
-
-    while (1)
-    {
-        // for(int i = 5; i <= 10; i++)
-        // {
-        //     pwm_update_duty_cycle(i);
-        //     nrf_delay_ms(100);
-        // }
-        // for(int i = 9; i > 5; i--)
-        // {
-        //     pwm_update_duty_cycle(i);
-        //     nrf_delay_ms(100);
-        // }
-        // pwm_update_duty_cycle(5);
-        // nrf_delay_ms(500);
-        // pwm_update_duty_cycle(10);
-        // nrf_delay_ms(500);
-        nrf_delay_ms(1000);
-    }
-    //pwm_update_duty_cycle(5);
+    servo_start();
 }
