@@ -48,6 +48,10 @@ typedef enum {
   OFF,
   DRIVING,
   TURNING,
+  BACK,
+  AVOIDL,
+  AVOIDR,
+  AFORWARD
 } robot_state_t;
 
 // LED array
@@ -231,6 +235,24 @@ float calculate_target_angle(void) {
 
 // ========== Ultrasonic parts ends here ==========
 
+static float measure_distance(uint16_t current_encoder, uint16_t previous_encoder) {
+    const float CONVERSION = 0.00008529;
+    float retval = 0;
+    float retval_edge_case = 0;
+    retval = (current_encoder - previous_encoder)*CONVERSION; 
+
+    if (current_encoder < previous_encoder) {
+        retval_edge_case = (0xFFFF - previous_encoder + current_encoder)*CONVERSION;
+        if (retval_edge_case > 1) {
+            return 0;
+        }
+        return retval_edge_case;
+    } 
+
+    return retval;
+
+}
+
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
   // Initialize timer
@@ -317,13 +339,20 @@ int main(void) {
   robot_state_t state = OFF;
   KobukiSensors_t sensors = {0};
 
-  float target_angle;
-  float current_angle;
+  float target_angle, current_angle, distance;
+
+  bool bump_left, bump_right, avoid_left, avoid_right, direction;
+  direction = true; // forward;
+  uint16_t right_whl_encoder_curr, right_whl_encoder_prev = 0;
 
   // loop forever, running state machine
   while (1) {
     // read sensors from robot
     kobukiSensorPoll(&sensors);
+    bump_left = sensors.bumps_wheelDrops.bumpLeft;
+    bump_right = sensors.bumps_wheelDrops.bumpRight | sensors.bumps_wheelDrops.bumpCenter;
+    right_whl_encoder_curr = sensors.rightWheelEncoder;
+    distance = measure_distance(right_whl_encoder_prev, right_whl_encoder_curr);
 
     // delay before continuing
     // Note: removing this delay will make responses quicker, but will result
@@ -349,6 +378,22 @@ int main(void) {
         // transition logic
         if (is_button_pressed(&sensors)) {
           state = OFF;
+        } else if (bump_left) {
+            right_whl_encoder_prev = right_whl_encoder_curr;
+            distance = 0;
+            direction = false;
+            target_angle = -45;
+            current_angle = 0;
+            mpu9250_start_gyro_integration();
+            state = AVOIDL;
+        } else if (bump_right) {
+            right_whl_encoder_prev = right_whl_encoder_curr;
+            distance = 0;
+            direction = false;
+            target_angle = 45;
+            current_angle = 0;
+            mpu9250_start_gyro_integration();
+            state = AVOIDR;
         } else if (timer_offsets_ready) {
           timer_offsets_ready = false;
           target_angle = calculate_target_angle();
@@ -375,6 +420,7 @@ int main(void) {
         if (is_button_pressed(&sensors)) {
           target_angle = 0;
           current_angle = 0;
+          mpu9250_stop_gyro_integration();
           state = OFF;
         } else {
           //display_write("TURNING", DISPLAY_LINE_0);
@@ -398,6 +444,71 @@ int main(void) {
         }
         break;
       }
+
+      case AVOIDL: {
+        display_write("AVOIDL", DISPLAY_LINE_0);
+        snprintf(print_str, 16, "%f", current_angle);
+        display_write(print_str, DISPLAY_LINE_1);
+        if (is_button_pressed(&sensors)) {
+          target_angle = 0;
+          current_angle = 0;
+          distance = 0;
+          direction = true;
+          mpu9250_stop_gyro_integration();
+          state = OFF;
+        } else {
+            if (distance < 0.1 && !direction) {
+                kobukiDriveDirect(-100, -100);
+            } else if (current_angle > target_angle) {
+                current_angle = mpu9250_read_gyro_integration().z_axis;
+                direction = true;
+                distance = 0;
+                kobukiDriveDirect(100, -100);
+            } else if (distance < 0.5) {
+                kobukiDriveDirect(100, 100);
+            } else {
+                target_angle = 0;
+                current_angle = 0;
+                distance = 0;
+                mpu9250_stop_gyro_integration();
+                state = DRIVING;
+            }
+        }
+        break;
+      }
+
+      case AVOIDR: {
+        display_write("AVOIDR", DISPLAY_LINE_0);
+        snprintf(print_str, 16, "%f", current_angle);
+        display_write(print_str, DISPLAY_LINE_1);
+        if (is_button_pressed(&sensors)) {
+          target_angle = 0;
+          current_angle = 0;
+          distance = 0;
+          direction = true;
+          mpu9250_stop_gyro_integration();
+          state = OFF;
+        } else {
+            if (distance < 0.1 && !direction) {
+                kobukiDriveDirect(-100, -100);
+            } else if (current_angle < target_angle) {
+                current_angle = mpu9250_read_gyro_integration().z_axis;
+                direction = true;
+                distance = 0;
+                kobukiDriveDirect(100, -100);
+            } else if (distance < 0.5) {
+                kobukiDriveDirect(100, 100);
+            } else {
+                target_angle = 0;
+                current_angle = 0;
+                distance = 0;
+                mpu9250_stop_gyro_integration();
+                state = DRIVING;
+            }
+        }
+        break;
+      }
+
 
       // add other cases here
 
