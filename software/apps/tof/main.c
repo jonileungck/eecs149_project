@@ -22,8 +22,20 @@
 #include "vl53l1_register_settings.h"
 
 
-static VL53L1_Dev_t dev;
-static VL53L1_DEV Dev = &dev;
+static VL53L1_Dev_t dev_0 = {
+  .I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT,
+  .TCA9548A_Address = 0x70,
+  .TCA9548A_Device = 0
+  };
+
+static VL53L1_DEV Dev_0 = &dev_0;
+
+static VL53L1_Dev_t dev_1 = {
+  .I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT,
+  .TCA9548A_Address = 0x70,
+  .TCA9548A_Device = 1
+};
+static VL53L1_DEV Dev_1 = &dev_1;
 
 static VL53L1_RangingMeasurementData_t RangingMeasurementData;
 static VL53L1_RangingMeasurementData_t *pRangingMeasurementData = &RangingMeasurementData;
@@ -50,17 +62,36 @@ int main(void) {
   APP_ERROR_CHECK(error_code);
 
   // initialize tof sensor
-  Dev->I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT;
+  // Dev_0->I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT;
+  // Dev_0->TCA9548A_Address = 0x70;
+  // Dev_0->TCA9548A_Device = 0;
   tof_init(&twi_mngr_instance);
-  VL53L1_software_reset(Dev);
+  VL53L1_software_reset(Dev_0);
   printf("Autonomous Ranging Test\n");
-  status = VL53L1_WaitDeviceBooted(Dev);
-  status = VL53L1_DataInit(Dev);
-  status = VL53L1_StaticInit(Dev);
-  status = VL53L1_SetDistanceMode(Dev, VL53L1_DISTANCEMODE_LONG);
-  status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(Dev, 50000);
-  status = VL53L1_SetInterMeasurementPeriodMilliSeconds(Dev, 500); 
-  status = VL53L1_StartMeasurement(Dev);
+  status = VL53L1_WaitDeviceBooted(Dev_0);
+  status = VL53L1_DataInit(Dev_0);
+  status = VL53L1_StaticInit(Dev_0);
+  status = VL53L1_SetDistanceMode(Dev_0, VL53L1_DISTANCEMODE_LONG);
+  status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(Dev_0, 50000);
+  status = VL53L1_SetInterMeasurementPeriodMilliSeconds(Dev_0, 500); 
+  status = VL53L1_StartMeasurement(Dev_0);
+  printf("status: %hhu\n", status);
+
+
+  // initialize tof sensor
+  // Dev_1->I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT;
+  // Dev_1->TCA9548A_Address = 0x70;
+  // Dev_1->TCA9548A_Device = 1;
+  tof_init(&twi_mngr_instance);
+  VL53L1_software_reset(Dev_1);
+  printf("Autonomous Ranging Test\n");
+  status = VL53L1_WaitDeviceBooted(Dev_1);
+  status = VL53L1_DataInit(Dev_1);
+  status = VL53L1_StaticInit(Dev_1);
+  status = VL53L1_SetDistanceMode(Dev_1, VL53L1_DISTANCEMODE_LONG);
+  status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(Dev_1, 50000);
+  status = VL53L1_SetInterMeasurementPeriodMilliSeconds(Dev_1, 500); 
+  status = VL53L1_StartMeasurement(Dev_1);
   printf("status: %hhu\n", status);
 
   if(status)
@@ -71,16 +102,33 @@ int main(void) {
 
    while (1) {
     // get measurements
-    status = VL53L1_WaitMeasurementDataReady(Dev);
+    status = VL53L1_WaitMeasurementDataReady(Dev_0);
     if (!status) {
-      status = VL53L1_GetRangingMeasurementData(Dev, pRangingMeasurementData);
+      status = VL53L1_GetRangingMeasurementData(Dev_0, pRangingMeasurementData);
       if (status == 0) {
+        printf("SENSOR 0\n");
         printf("Ranging status: %hhu\n", pRangingMeasurementData->RangeStatus);
         printf("RangeMilliMeter: %hu\n", pRangingMeasurementData->RangeMilliMeter);
         printf("SignalRateRtnMegaCps: %f\n", pRangingMeasurementData->SignalRateRtnMegaCps/65536.0);
         printf("AmbientRateRtnMegaCps: %f\n", pRangingMeasurementData->AmbientRateRtnMegaCps/65336.0);
       }
-      status = VL53L1_ClearInterruptAndStartMeasurement(Dev);
+      status = VL53L1_ClearInterruptAndStartMeasurement(Dev_0);
+    } else {
+      printf("error waiting for data ready: %hhu\n", status);
+    }
+    nrf_delay_ms(100);
+
+    status = VL53L1_WaitMeasurementDataReady(Dev_1);
+    if (!status) {
+      status = VL53L1_GetRangingMeasurementData(Dev_1, pRangingMeasurementData);
+      if (status == 0) {
+        printf("SENSOR 1\n");
+        printf("Ranging status: %hhu\n", pRangingMeasurementData->RangeStatus);
+        printf("RangeMilliMeter: %hu\n", pRangingMeasurementData->RangeMilliMeter);
+        printf("SignalRateRtnMegaCps: %f\n", pRangingMeasurementData->SignalRateRtnMegaCps/65536.0);
+        printf("AmbientRateRtnMegaCps: %f\n", pRangingMeasurementData->AmbientRateRtnMegaCps/65336.0);
+      }
+      status = VL53L1_ClearInterruptAndStartMeasurement(Dev_1);
     } else {
       printf("error waiting for data ready: %hhu\n", status);
     }

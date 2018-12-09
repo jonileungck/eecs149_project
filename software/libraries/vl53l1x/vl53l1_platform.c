@@ -69,6 +69,7 @@
 // #include "stm32xxx_hal.h"
 #include <string.h>
 #include <time.h>
+// #include <pthread.h>
 // #include <unistd.h>
 // #include <math.h>
 
@@ -77,6 +78,8 @@
 #include "nrf_delay.h"
 #include "nrf_drv_timer.h"
 #include "nrf_twi_mngr.h"
+
+// static pthread_mutex_t i2c_mutex = PTHREAD_MUTEX_INITIALIZER; 
 
 #define TWI_BUFFER_SIZE    6
 
@@ -138,6 +141,28 @@ static void merge_register_and_data(uint8_t* new_buffer, uint16_t reg, uint8_t* 
   memcpy((new_buffer + 2), p_data, length);
 }
 
+static void i2c_read_one_byte_func(uint8_t i2c_addr, uint8_t reg_addr, uint8_t *p_data, uint8_t length) {
+  nrf_twi_mngr_transfer_t const read_transfer[] = {
+    NRF_TWI_MNGR_WRITE(i2c_addr, reg_addr, 1, NRF_TWI_MNGR_NO_STOP),
+    NRF_TWI_MNGR_READ(i2c_addr, p_data, length, 0),
+  };
+  ret_code_t error_code = nrf_twi_mngr_perform(i2c_manager, NULL, read_transfer, 2, NULL);
+  APP_ERROR_CHECK(error_code);
+}
+
+static void i2c_write_one_byte_func(uint8_t i2c_addr, uint8_t reg_addr, uint8_t *p_data, uint8_t length) {
+  // Merging register address and p_data into one buffer
+  uint8_t buf[length+1];
+  buf[0] = reg_addr;
+  memcpy((buf + 1), p_data, length);
+  // Transferring
+  nrf_twi_mngr_transfer_t const write_transfer[] = {
+    NRF_TWI_MNGR_WRITE(i2c_addr, buf, length + 1, 0),
+  };
+  ret_code_t error_code = nrf_twi_mngr_perform(i2c_manager, NULL, write_transfer, 1, NULL); 
+  APP_ERROR_CHECK(error_code);
+}
+
 static void i2c_read_func(uint8_t i2c_addr, uint16_t reg_addr, uint8_t *p_data, uint8_t length) {
   uint8_t w_addr[2];
   w_addr[0] = reg_addr >> 8;
@@ -167,7 +192,13 @@ static int i2c_write(VL53L1_DEV Dev, uint16_t cmd,
                     uint8_t *data, uint8_t len)
 {
     int result = VL53L1_ERROR_NONE;
-    i2c_write_func(Dev->I2cDevAddr, cmd, data, len);
+    if (Dev->TCA9548A_Device < 8) {
+      // pthread_mutex_lock(&i2c_mutex);
+      
+      i2c_write_one_byte_func(Dev->TCA9548A_Address, (1 << Dev->TCA9548A_Device), NULL, 0);
+      i2c_write_func(Dev->I2cDevAddr, cmd, data, len);
+      // pthread_mutex_unlock(&i2c_mutex);
+    }
     return result;
 }
 
@@ -175,7 +206,13 @@ static int i2c_read(VL53L1_DEV Dev, uint16_t cmd,
                     uint8_t * data, uint8_t len)
 {
     int result = VL53L1_ERROR_NONE;
-    i2c_read_func(Dev->I2cDevAddr, cmd, data, len);
+    if (Dev->TCA9548A_Device < 8) {
+      // pthread_mutex_lock(&i2c_mutex);
+      
+      i2c_write_one_byte_func(Dev->TCA9548A_Address, (1 << Dev->TCA9548A_Device), NULL, 0);
+      i2c_read_func(Dev->I2cDevAddr, cmd, data, len);
+      // pthread_mutex_unlock(&i2c_mutex);
+    }
     return result;
 }
 
