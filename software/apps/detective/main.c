@@ -51,7 +51,6 @@ static simple_ble_config_t ble_config = {
 };
 simple_ble_app_t* simple_ble_app;
 
-
 // Sends the specified data over BLE advertisements
 void set_ble_payload(uint8_t* buffer, uint8_t length) {
   static uint8_t adv_buffer[24] = {0};
@@ -78,21 +77,6 @@ void set_ble_payload(uint8_t* buffer, uint8_t length) {
 
   // update advertisement data and start advertising
   simple_ble_set_adv(&advdata, NULL);
-}
-
-// Callback when the timer fires. Updates the advertisement data
-void adv_timer_callback(void) {
-  static uint8_t increment = 0;
-
-  // Update advertisement data
-  // Increments each value by one each time
-  increment++;
-  uint8_t buffer[23] = {0};
-  for (int i=0; i<23; i++) {
-    buffer[i] = i+increment;
-  }
-  printf("Buffer value: %d\n", buffer[0]);
-  set_ble_payload(buffer, 23);
 }
 //BLE section end
 
@@ -155,6 +139,8 @@ void TIMER3_IRQHandler(void) {
     }
     //Read tof sensor data here
     pull_distance_data();
+    //Send data using BLE
+    //set_ble_payload(buffer, 23);
 
     nrf_timer_event_clear(NRF_TIMER3, NRF_TIMER_EVENT_COMPARE0);
     nrf_timer_task_trigger(NRF_TIMER3, NRF_TIMER_TASK_CLEAR);
@@ -193,6 +179,11 @@ void buckler_init() {
     // Wait for clock to start
     while(NRF_CLOCK->EVENTS_HFCLKSTARTED == 0)
         ;
+
+    //ble start
+    simple_ble_app = simple_ble_init(&ble_config);
+    // set_ble_payload(buffer, 23);
+    //ble end
 }
 // titlis's section - end
 
@@ -518,21 +509,9 @@ int main(void) {
   direction = true; // forward;
   uint16_t right_whl_encoder_curr, right_whl_encoder_prev = 0;
 
-  //test start
-  simple_ble_app = simple_ble_init(&ble_config);
-  uint8_t buffer[23] = {0};
-  for (int i=0; i<23; i++) {
-    buffer[i] = i;
-  }
-  set_ble_payload(buffer, 23);
-  app_timer_init();
-  app_timer_create(&adv_timer, APP_TIMER_MODE_REPEATED, (app_timer_timeout_handler_t)adv_timer_callback);
-  app_timer_start(adv_timer, APP_TIMER_TICKS(1000), NULL); // 1000 milliseconds
-
-  //test end
-
   // loop forever, running state machine
   while (1) {
+    //BLE
     power_manage();
     // read sensors from robot
     kobukiSensorPoll(&sensors);
