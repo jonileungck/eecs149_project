@@ -415,8 +415,6 @@ static float measure_distance(uint16_t current_encoder, uint16_t previous_encode
 }
 
 int main(void) {
-  buckler_init();
-  servo_start();
 
   ret_code_t error_code = NRF_SUCCESS;
   // Initialize timer
@@ -498,6 +496,10 @@ int main(void) {
   // initialize Kobuki
   kobukiInit();
   printf("Kobuki initialized!\n");
+
+  // titlis's init
+  buckler_init();
+  servo_start();
 
   // configure initial state
   robot_state_t state = OFF;
