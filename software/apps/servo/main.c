@@ -33,14 +33,16 @@ nrf_pwm_sequence_t const seq =
     .end_delay       = 0
 };
 
+static volatile uint8_t distance_data[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+void pull_distance_data()
+{
+    //test
+}
 
-// Set duty cycle between 0 and 100%
+
 void pwm_update_duty_cycle(double duty_cycle)
 {
-
-    // Check if value is outside of range. If so, set to 100%
     seq_values->channel_0 = 2500-(int)(duty_cycle * 25);
-
     nrf_drv_pwm_simple_playback(&m_pwm0, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
 }
 
@@ -69,10 +71,13 @@ void pwm_init(void)
 int mode = 0;
 void TIMER2_IRQHandler(void) {
     if(mode == 0) {
-      pwm_update_duty_cycle(5.5);
+        pwm_update_duty_cycle(2.3);
     } else if(mode == 2) {
-      pwm_update_duty_cycle(10);
+        pwm_update_duty_cycle(6.8);
     }
+    //Read tof sensor data here
+    pull_distance_data();
+
     nrf_timer_event_clear(NRF_TIMER2, NRF_TIMER_EVENT_COMPARE0);
     nrf_timer_task_trigger(NRF_TIMER2, NRF_TIMER_TASK_CLEAR);
     mode = (mode + 1) % 4;
@@ -84,7 +89,7 @@ void servo_start(void) {
     nrf_timer_mode_set(NRF_TIMER2,NRF_TIMER_MODE_TIMER);
     nrf_timer_bit_width_set(NRF_TIMER2, NRF_TIMER_BIT_WIDTH_32);
     nrf_timer_frequency_set(NRF_TIMER2, NRF_TIMER_FREQ_1MHz);
-    //timer for every 500ms
+    //timer for every 250ms
     nrf_timer_cc_write(NRF_TIMER2, NRF_TIMER_CC_CHANNEL0, 1000000/4);
     nrf_timer_int_enable(NRF_TIMER2,NRF_TIMER_INT_COMPARE0_MASK );
     nrf_timer_task_trigger(NRF_TIMER2, NRF_TIMER_TASK_START);
@@ -113,6 +118,7 @@ void buckler_init() {
 }
 
 int main(void) {
+
     buckler_init();
     servo_start();
 }
