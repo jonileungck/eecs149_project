@@ -502,7 +502,6 @@ static float measure_distance(uint16_t current_encoder, uint16_t previous_encode
 int main(void) {
   buckler_init();
   servo_start();
-
   ret_code_t error_code = NRF_SUCCESS;
   // Initialize timer
   error_code = nrfx_timer_init(&detection_timer, &timer_cfg, detection_timer_event_handler);
@@ -555,8 +554,19 @@ int main(void) {
   i2c_config.frequency = NRF_TWIM_FREQ_100K;
   error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
   APP_ERROR_CHECK(error_code);
-  mpu9250_init(&twi_mngr_instance);
-  printf("IMU initialized!\n");
+  tof_init(&twi_mngr_instance);
+
+
+  // initialize tof sensor
+  vl53l1_init(Dev_0, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 0);
+  vl53l1_init(Dev_1, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 1);
+  vl53l1_init(Dev_2, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 2);
+  vl53l1_init(Dev_3, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 3);
+
+  if(status) {
+    printf("VL53L1_StartMeasurement failed\n");
+    while(1);
+  }
 
   // Initialize ultrasonic interrupts
   nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);
@@ -594,6 +604,8 @@ int main(void) {
   direction = true; // forward;
   uint16_t right_whl_encoder_curr, right_whl_encoder_prev = 0;
 
+  uint8_t data[4];
+
   // loop forever, running state machine
   while (1) {
     //BLE
@@ -609,6 +621,13 @@ int main(void) {
     // Note: removing this delay will make responses quicker, but will result
     //  in printf's in this loop breaking JTAG
     nrf_delay_ms(100);
+
+    // get measurements
+    read_tof(data);
+    printf("Sensor 0 16bit reading: %hu\n", data[0] << 4);
+    printf("Sensor 1 16bit reading: %hu\n", data[1] << 4);
+    printf("Sensor 2 16bit reading: %hu\n", data[2] << 4);
+    printf("Sensor 3 16bit reading: %hu\n", data[3] << 4);
 
     // handle states
     switch(state) {
