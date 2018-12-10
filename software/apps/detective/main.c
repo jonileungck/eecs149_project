@@ -32,6 +32,10 @@
 #include "nrf_timer.h"
 #include "boards.h"
 
+#include "vl53l1_api.h"
+#include "vl53l1_platform.h"
+#include "vl53l1_register_settings.h"
+
 // titlis's section - start
 #define OUTPUT_PIN 16
 
@@ -340,6 +344,87 @@ float calculate_target_angle(void) {
 }
 
 // ========== Ultrasonic parts ends here ==========
+
+// =========== ToF part starts here ===============
+
+static VL53L1_Dev_t dev_0;
+static VL53L1_Dev_t dev_1;
+static VL53L1_Dev_t dev_2;
+static VL53L1_Dev_t dev_3;
+
+static VL53L1_DEV Dev_0 = &dev_0;
+static VL53L1_DEV Dev_1 = &dev_1;
+static VL53L1_DEV Dev_2 = &dev_2;
+static VL53L1_DEV Dev_3 = &dev_3;
+
+static VL53L1_RangingMeasurementData_t RangingMeasurementData;
+static VL53L1_RangingMeasurementData_t *pRangingMeasurementData = &RangingMeasurementData;
+
+static VL53L1_Error status;
+
+void vl53l1_init(VL53L1_DEV Dev, uint8_t I2cDevAddr, uint8_t TCA9548A_Addr, uint8_t TCA9548A_Device) {
+  Dev->I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT;
+  Dev->TCA9548A_Address = TCA9548A_Addr;
+  Dev->TCA9548A_Device = TCA9548A_Device;
+
+  printf("Initializing sensor\n");
+  status = VL53L1_software_reset(Dev);
+  status = VL53L1_WaitDeviceBooted(Dev);
+  status = VL53L1_DataInit(Dev);
+  status = VL53L1_StaticInit(Dev);
+  status = VL53L1_SetDistanceMode(Dev, VL53L1_DISTANCEMODE_LONG);
+  status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(Dev, 50000);  // [20, 100]ms
+  status = VL53L1_SetInterMeasurementPeriodMilliSeconds(Dev, 250);  // min = budget + 4ms
+  status = VL53L1_StartMeasurement(Dev);
+  // printf("status: %hhu\n", status);
+}
+
+
+uint16_t ranging(VL53L1_DEV Dev) {
+  status = VL53L1_WaitMeasurementDataReady(Dev);
+  if (!status) {
+    status = VL53L1_GetRangingMeasurementData(Dev, pRangingMeasurementData);
+    if (status == 0) {
+      printf("Ranging status: %hhu\n", pRangingMeasurementData->RangeStatus);
+      printf("RangeMilliMeter: %hu\n", pRangingMeasurementData->RangeMilliMeter);
+      printf("SignalRateRtnMegaCps: %f\n", pRangingMeasurementData->SignalRateRtnMegaCps/65536.0);
+      printf("AmbientRateRtnMegaCps: %f\n", pRangingMeasurementData->AmbientRateRtnMegaCps/65336.0);
+      status = VL53L1_ClearInterruptAndStartMeasurement(Dev);
+      return pRangingMeasurementData->RangeMilliMeter;
+    } else {
+      return 0;
+    }
+  } else {
+    printf("error waiting for data ready: %hhu\n", status);
+    return 0;
+  }
+}
+
+
+void i2c_init() {
+  ret_code_t error_code = NRF_SUCCESS;
+  nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
+  i2c_config.scl = BUCKLER_SENSORS_SCL;
+  i2c_config.sda = BUCKLER_SENSORS_SDA;
+  i2c_config.frequency = NRF_TWIM_FREQ_100K;
+  error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
+  APP_ERROR_CHECK(error_code);
+}
+
+
+void read_tof(uint8_t* data) {
+  uint16_t measurement;
+  measurement = ranging(Dev_0);
+  data[0] = (uint8_t) (measurement >> 4);
+  measurement = ranging(Dev_1);
+  data[1] = (uint8_t) (measurement >> 4);
+  measurement = ranging(Dev_2);
+  data[2] = (uint8_t) (measurement >> 4);
+  measurement = ranging(Dev_3);
+  data[3] = (uint8_t) (measurement >> 4);
+}
+
+// ============ ToF part ends here =================
 
 static float measure_distance(uint16_t current_encoder, uint16_t previous_encoder) {
     const float CONVERSION = 0.00008529;
