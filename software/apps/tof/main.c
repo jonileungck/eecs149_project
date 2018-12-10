@@ -63,15 +63,16 @@ void vl53l1_init(VL53L1_DEV Dev, uint8_t I2cDevAddr, uint8_t TCA9548A_Addr, uint
 uint16_t ranging(VL53L1_DEV Dev) {
   status = VL53L1_WaitMeasurementDataReady(Dev);
   if (!status) {
-    status = VL53L1_GetRangingMeasurementData(Dev, pRangingMeasurementData);
     if (status == 0) {
       printf("Ranging status: %hhu\n", pRangingMeasurementData->RangeStatus);
       printf("RangeMilliMeter: %hu\n", pRangingMeasurementData->RangeMilliMeter);
       printf("SignalRateRtnMegaCps: %f\n", pRangingMeasurementData->SignalRateRtnMegaCps/65536.0);
       printf("AmbientRateRtnMegaCps: %f\n", pRangingMeasurementData->AmbientRateRtnMegaCps/65336.0);
+      status = VL53L1_ClearInterruptAndStartMeasurement(Dev);
+      return pRangingMeasurementData->RangeMilliMeter;
+    } else {
+      return 0;
     }
-    status = VL53L1_ClearInterruptAndStartMeasurement(Dev);
-    return pRangingMeasurementData->RangeMilliMeter;
   } else {
     printf("error waiting for data ready: %hhu\n", status);
     return 0;
@@ -79,7 +80,7 @@ uint16_t ranging(VL53L1_DEV Dev) {
 }
 
 void i2c_init() {
-  error_code = NRF_SUCCESS;
+  ret_code_t error_code = NRF_SUCCESS;
   nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
   i2c_config.scl = BUCKLER_SENSORS_SCL;
   i2c_config.sda = BUCKLER_SENSORS_SDA;
@@ -106,7 +107,7 @@ void read_tof(uint8_t* data) {
 
 int main(void) {
   // initialize RTT library
-  error_code = NRF_SUCCESS;
+  ret_code_t error_code = NRF_SUCCESS;
   error_code = NRF_LOG_INIT(NULL);
   APP_ERROR_CHECK(error_code);
   NRF_LOG_DEFAULT_BACKENDS_INIT();
