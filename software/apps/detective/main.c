@@ -35,9 +35,106 @@
 #include "app_util.h"
 #include "simple_ble.h"
 
+#include "vl53l1_api.h"
+#include "vl53l1_platform.h"
+#include "vl53l1_register_settings.h"
+
+static volatile uint8_t distance_data[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+//TOF start
+static VL53L1_Dev_t dev_0;
+static VL53L1_DEV Dev_0 = &dev_0;
+
+static VL53L1_Dev_t dev_1;
+static VL53L1_DEV Dev_1 = &dev_1;
+
+static VL53L1_Dev_t dev_2;
+static VL53L1_DEV Dev_2 = &dev_2;
+
+static VL53L1_Dev_t dev_3;
+static VL53L1_DEV Dev_3 = &dev_3;
+
+static VL53L1_RangingMeasurementData_t RangingMeasurementData;
+static VL53L1_RangingMeasurementData_t *pRangingMeasurementData = &RangingMeasurementData;
+
+static VL53L1_Error status;
+static ret_code_t error_code;
+
+// I2C manager
+NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
+
+void vl53l1_init(VL53L1_DEV Dev, uint8_t I2cDevAddr, uint8_t TCA9548A_Addr, uint8_t TCA9548A_Device) {
+  Dev->I2cDevAddr = VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT;
+  Dev->TCA9548A_Address = TCA9548A_Addr;
+  Dev->TCA9548A_Device = TCA9548A_Device;
+
+  printf("Initializing sensor\n");
+  status = VL53L1_software_reset(Dev);
+  status = VL53L1_WaitDeviceBooted(Dev);
+  status = VL53L1_DataInit(Dev);
+  status = VL53L1_StaticInit(Dev);
+  status = VL53L1_SetDistanceMode(Dev, VL53L1_DISTANCEMODE_LONG);
+  status = VL53L1_SetMeasurementTimingBudgetMicroSeconds(Dev, 50000);  // [20, 100]ms
+  status = VL53L1_SetInterMeasurementPeriodMilliSeconds(Dev, 250);  // min = budget + 4ms
+  status = VL53L1_StartMeasurement(Dev);
+  printf("status: %hhu\n", status);
+}
+
+uint16_t ranging(VL53L1_DEV Dev) {
+  status = VL53L1_WaitMeasurementDataReady(Dev);
+  if (!status) {
+    status = VL53L1_GetRangingMeasurementData(Dev, pRangingMeasurementData);
+    // if (status == 0) {
+    //   printf("Ranging status: %hhu\n", pRangingMeasurementData->RangeStatus);
+    //   printf("RangeMilliMeter: %hu\n", pRangingMeasurementData->RangeMilliMeter);
+    //   printf("SignalRateRtnMegaCps: %f\n", pRangingMeasurementData->SignalRateRtnMegaCps/65536.0);
+    //   printf("AmbientRateRtnMegaCps: %f\n", pRangingMeasurementData->AmbientRateRtnMegaCps/65336.0);
+    // }
+    status = VL53L1_ClearInterruptAndStartMeasurement(Dev);
+    return pRangingMeasurementData->RangeMilliMeter;
+  } else {
+    printf("error waiting for data ready: %hhu\n", status);
+    return 0;
+  }
+}
+
+void i2c_init() {
+  error_code = NRF_SUCCESS;
+  nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
+  i2c_config.scl = BUCKLER_SENSORS_SCL;
+  i2c_config.sda = BUCKLER_SENSORS_SDA;
+  i2c_config.frequency = NRF_TWIM_FREQ_100K;
+  error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
+  APP_ERROR_CHECK(error_code);
+}
+
+void read_tof(uint8_t* data) {
+  uint16_t measurement;
+  // printf("===========SENSOR 0===========\n");
+  measurement = ranging(Dev_0);
+  data[0] = (uint8_t) (measurement >> 4);
+  // printf("===========SENSOR 1===========\n");
+  measurement = ranging(Dev_1);
+  data[1] = (uint8_t) (measurement >> 4);
+  // printf("===========SENSOR 2===========\n");
+  measurement = ranging(Dev_2);
+  data[2] = (uint8_t) (measurement >> 4);
+  // printf("===========SENSOR 3===========\n");
+  measurement = ranging(Dev_3);
+  data[3] = (uint8_t) (measurement >> 4);
+}
+
+uint8_t tof_data[4];
+void get_tof_data()
+{
+    read_tof(tof_data);
+
+}
+//TOF end
+
 //BLE section start
 // Create a timer
-APP_TIMER_DEF(adv_timer);
+APP_TIMER_DEF(ble_timer);
 
 // BLE configuration
 static simple_ble_config_t ble_config = {
@@ -45,7 +142,7 @@ static simple_ble_config_t ble_config = {
         .platform_id       = 0x4A,    // used as 4th octet in device BLE address
         .device_id         = 0x0001,  // used as the 5th and 6th octet in the device BLE address, you will need to change this for each device you have
         .adv_name          = "EE149", // irrelevant in this example
-        .adv_interval      = MSEC_TO_UNITS(1000, UNIT_0_625_MS), // send a packet once per second (minimum is 20 ms)
+        .adv_interval      = MSEC_TO_UNITS(125, UNIT_0_625_MS), // send a packet once per second (minimum is 20 ms)
         .min_conn_interval = MSEC_TO_UNITS(500, UNIT_1_25_MS), // irrelevant if advertising only
         .max_conn_interval = MSEC_TO_UNITS(1000, UNIT_1_25_MS), // irrelevant if advertising only
 };
@@ -78,6 +175,14 @@ void set_ble_payload(uint8_t* buffer, uint8_t length) {
   // update advertisement data and start advertising
   simple_ble_set_adv(&advdata, NULL);
 }
+void ble_timer_callback(void) {
+  printf("sending distance: [");
+  for(int i = 0; i < 12; i++) {
+      printf("%d, ", distance_data[i] << 4);
+  }
+  printf("]\n");
+  set_ble_payload(distance_data, 12);
+}
 //BLE section end
 
 // titlis's section - start
@@ -94,13 +199,6 @@ nrf_pwm_sequence_t const seq =
     .repeats         = 0,
     .end_delay       = 0
 };
-
-static volatile uint8_t distance_data[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-void pull_distance_data()
-{
-    //test
-}
-
 
 void pwm_update_duty_cycle(double duty_cycle)
 {
@@ -130,21 +228,30 @@ void pwm_init(void)
     APP_ERROR_CHECK(nrf_drv_pwm_init(&m_pwm0, &config0, NULL));
 }
 
+void fill_distance_data(int mode) {
+    distance_data[mode] = tof_data[0];
+    distance_data[(mode+3)%12] = tof_data[1];
+    distance_data[(mode+6)%12] = tof_data[2];
+    distance_data[(mode+9)%12] = tof_data[3];
+}
+
 int mode = 0;
 void TIMER3_IRQHandler(void) {
-    if(mode == 0) {
+    if(mode <= 2) {
+      if(mode == 0) {
         pwm_update_duty_cycle(2.3);
-    } else if(mode == 2) {
+      }
+      fill_distance_data(mode);
+    } else {
+      if(mode == 3) {
         pwm_update_duty_cycle(6.8);
+      }
+      fill_distance_data(5-mode);
     }
-    //Read tof sensor data here
-    pull_distance_data();
-    //Send data using BLE
-    //set_ble_payload(buffer, 23);
 
     nrf_timer_event_clear(NRF_TIMER3, NRF_TIMER_EVENT_COMPARE0);
     nrf_timer_task_trigger(NRF_TIMER3, NRF_TIMER_TASK_CLEAR);
-    mode = (mode + 1) % 4;
+    mode = (mode + 1) % 6;
 }
 
 void servo_start(void) {
@@ -153,8 +260,8 @@ void servo_start(void) {
     nrf_timer_mode_set(NRF_TIMER3,NRF_TIMER_MODE_TIMER);
     nrf_timer_bit_width_set(NRF_TIMER3, NRF_TIMER_BIT_WIDTH_32);
     nrf_timer_frequency_set(NRF_TIMER3, NRF_TIMER_FREQ_1MHz);
-    //timer for every 250ms
-    nrf_timer_cc_write(NRF_TIMER3, NRF_TIMER_CC_CHANNEL0, 1000000/4);
+    //timer for every 167ms
+    nrf_timer_cc_write(NRF_TIMER3, NRF_TIMER_CC_CHANNEL0, (1000000/2)/3);
     nrf_timer_int_enable(NRF_TIMER3,NRF_TIMER_INT_COMPARE0_MASK );
     nrf_timer_task_trigger(NRF_TIMER3, NRF_TIMER_TASK_START);
 }
@@ -219,7 +326,7 @@ typedef enum {
 static uint8_t LEDS[3] = {BUCKLER_LED0, BUCKLER_LED1, BUCKLER_LED2};
 
 // I2C manager
-NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
+// NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
 
 
 // ========== Ultrasonic parts starts here ==========
@@ -461,17 +568,27 @@ int main(void) {
   display_write("Hello, Human!", DISPLAY_LINE_0);
   printf("Display initialized!\n");
 
+  //TOF
+  i2c_init();
+  tof_init(&twi_mngr_instance);
+  vl53l1_init(Dev_0, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 0);
+  vl53l1_init(Dev_1, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 1);
+  vl53l1_init(Dev_2, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 2);
+  vl53l1_init(Dev_3, VL53L1_EWOK_I2C_DEV_ADDR_DEFAULT, 0x70, 3);
+
+
   // initialize i2c master (two wire interface)
-  nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
-  i2c_config.scl = BUCKLER_SENSORS_SCL;
-  i2c_config.sda = BUCKLER_SENSORS_SDA;
-  i2c_config.frequency = NRF_TWIM_FREQ_100K;
-  error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
-  APP_ERROR_CHECK(error_code);
-  mpu9250_init(&twi_mngr_instance);
+  // nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
+  // i2c_config.scl = BUCKLER_SENSORS_SCL;
+  // i2c_config.sda = BUCKLER_SENSORS_SDA;
+  // i2c_config.frequency = NRF_TWIM_FREQ_100K;
+  // i2c_config.interrupt_priority = 6;
+  // error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
+  // APP_ERROR_CHECK(error_code);
+  //mpu9250_init(&twi_mngr_instance);
   printf("IMU initialized!\n");
 
-  // Initialize ultrasonic interrupts
+  //Initialize ultrasonic interrupts
   nrfx_gpiote_in_config_t in_config = NRFX_GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);
   in_config.pull = NRF_GPIO_PIN_PULLDOWN;
 
@@ -500,6 +617,9 @@ int main(void) {
   // titlis's init
   buckler_init();
   servo_start();
+  app_timer_init();
+  app_timer_create(&ble_timer, APP_TIMER_MODE_REPEATED, (app_timer_timeout_handler_t)ble_timer_callback);
+  app_timer_start(ble_timer, APP_TIMER_TICKS(125), NULL);
 
   // configure initial state
   robot_state_t state = OFF;
@@ -511,175 +631,184 @@ int main(void) {
   direction = true; // forward;
   uint16_t right_whl_encoder_curr, right_whl_encoder_prev = 0;
 
+  // align servo to the front
+  pwm_update_duty_cycle(2.3);
+  nrf_delay_ms(2000);
+
   // loop forever, running state machine
   while (1) {
+    //
+    //TOF
+    get_tof_data();
     //BLE
+    //set_ble_payload(distance_data, 12);
     power_manage();
-    // read sensors from robot
-    kobukiSensorPoll(&sensors);
-    bump_left = sensors.bumps_wheelDrops.bumpLeft;
-    bump_right = sensors.bumps_wheelDrops.bumpRight | sensors.bumps_wheelDrops.bumpCenter;
-    right_whl_encoder_curr = sensors.rightWheelEncoder;
-    distance = measure_distance(right_whl_encoder_prev, right_whl_encoder_curr);
+    // //read sensors from robot
+    // kobukiSensorPoll(&sensors);
+    // bump_left = sensors.bumps_wheelDrops.bumpLeft;
+    // bump_right = sensors.bumps_wheelDrops.bumpRight | sensors.bumps_wheelDrops.bumpCenter;
+    // right_whl_encoder_curr = sensors.rightWheelEncoder;
+    // distance = measure_distance(right_whl_encoder_prev, right_whl_encoder_curr);
+    //
+    // // delay before continuing
+    // // Note: removing this delay will make responses quicker, but will result
+    // //  in printf's in this loop breaking JTAG
+    // nrf_delay_ms(100);
+    //
+    // // handle states
+    // switch(state) {
+    //   case OFF: {
+    //     // transition logic
+    //     if (is_button_pressed(&sensors)) {
+    //       state = DRIVING;
+    //     } else {
+    //       // perform state-specific actions here
+    //       display_write("OFF", DISPLAY_LINE_0);
+    //       kobukiDriveDirect(0, 0);
+    //       state = OFF;
+    //     }
+    //     break; // each case needs to end with break!
+    //   }
+    //
+    //   case DRIVING: {
+    //     // transition logic
+    //     if (is_button_pressed(&sensors)) {
+    //       state = OFF;
+    //     } else if (bump_left) {
+    //         right_whl_encoder_prev = right_whl_encoder_curr;
+    //         distance = 0;
+    //         direction = false;
+    //         target_angle = -45;
+    //         current_angle = 0;
+    //         mpu9250_start_gyro_integration();
+    //         state = AVOIDL;
+    //     } else if (bump_right) {
+    //         right_whl_encoder_prev = right_whl_encoder_curr;
+    //         distance = 0;
+    //         direction = false;
+    //         target_angle = 45;
+    //         current_angle = 0;
+    //         mpu9250_start_gyro_integration();
+    //         state = AVOIDR;
+    //     } else if (timer_offsets_ready) {
+    //       timer_offsets_ready = false;
+    //       target_angle = calculate_target_angle();
+    //       snprintf(print_str, 16, "%f", target_angle);
+    //       display_write(print_str, DISPLAY_LINE_1);
+    //       if (target_angle > 10 || target_angle < -10) {
+    //         current_angle = 0;
+    //         mpu9250_start_gyro_integration();
+    //         state = TURNING;
+    //       } else {
+    //         display_write("AHEAD", DISPLAY_LINE_1);
+    //         state = DRIVING;
+    //       }
+    //     } else {
+    //       // perform state-specific actions here
+    //       display_write("DRIVING", DISPLAY_LINE_0);
+    //       kobukiDriveDirect(100, 100);
+    //       state = DRIVING;
+    //     }
+    //     break; // each case needs to end with break!
+    //   }
+    //
+    //   case TURNING: {
+    //     if (is_button_pressed(&sensors)) {
+    //       target_angle = 0;
+    //       current_angle = 0;
+    //       mpu9250_stop_gyro_integration();
+    //       state = OFF;
+    //     } else {
+    //       //display_write("TURNING", DISPLAY_LINE_0);
+    //       current_angle = mpu9250_read_gyro_integration().z_axis;
+    //       snprintf(print_str, 16, "%f", target_angle);
+    //       display_write(print_str, DISPLAY_LINE_0);
+    //       snprintf(print_str, 16, "%f", current_angle);
+    //       display_write(print_str, DISPLAY_LINE_1);
+    //       if (target_angle > 0 && target_angle - current_angle > 5) {
+    //         kobukiDriveDirect(-100, 100);
+    //         state = TURNING;
+    //       } else if (target_angle < 0 && target_angle - current_angle < -5) {
+    //         kobukiDriveDirect(100, -100);
+    //         state = TURNING;
+    //       } else {
+    //         mpu9250_stop_gyro_integration();
+    //         target_angle = 0;
+    //         current_angle = 0;
+    //         state = DRIVING;
+    //       }
+    //     }
+    //     break;
+    //   }
+    //
+    //   case AVOIDL: {
+    //     display_write("AVOIDL", DISPLAY_LINE_0);
+    //     snprintf(print_str, 16, "%f", current_angle);
+    //     display_write(print_str, DISPLAY_LINE_1);
+    //     if (is_button_pressed(&sensors)) {
+    //       target_angle = 0;
+    //       current_angle = 0;
+    //       distance = 0;
+    //       direction = true;
+    //       mpu9250_stop_gyro_integration();
+    //       state = OFF;
+    //     } else {
+    //         if (distance < 0.1 && !direction) {
+    //             kobukiDriveDirect(-100, -100);
+    //         } else if (current_angle > target_angle) {
+    //             current_angle = mpu9250_read_gyro_integration().z_axis;
+    //             direction = true;
+    //             distance = 0;
+    //             kobukiDriveDirect(100, -100);
+    //         } else if (distance < 0.5) {
+    //             kobukiDriveDirect(100, 100);
+    //         } else {
+    //             target_angle = 0;
+    //             current_angle = 0;
+    //             distance = 0;
+    //             mpu9250_stop_gyro_integration();
+    //             state = DRIVING;
+    //         }
+    //     }
+    //     break;
+    //   }
+    //
+    //   case AVOIDR: {
+    //     display_write("AVOIDR", DISPLAY_LINE_0);
+    //     snprintf(print_str, 16, "%f", current_angle);
+    //     display_write(print_str, DISPLAY_LINE_1);
+    //     if (is_button_pressed(&sensors)) {
+    //       target_angle = 0;
+    //       current_angle = 0;
+    //       distance = 0;
+    //       direction = true;
+    //       mpu9250_stop_gyro_integration();
+    //       state = OFF;
+    //     } else {
+    //         if (distance < 0.1 && !direction) {
+    //             kobukiDriveDirect(-100, -100);
+    //         } else if (current_angle < target_angle) {
+    //             current_angle = mpu9250_read_gyro_integration().z_axis;
+    //             direction = true;
+    //             distance = 0;
+    //             kobukiDriveDirect(100, -100);
+    //         } else if (distance < 0.5) {
+    //             kobukiDriveDirect(100, 100);
+    //         } else {
+    //             target_angle = 0;
+    //             current_angle = 0;
+    //             distance = 0;
+    //             mpu9250_stop_gyro_integration();
+    //             state = DRIVING;
+    //         }
+    //     }
+    //     break;
+    //   }
+    //
+    //
+    //   // add other cases here
+    //
+    // }
 
-    // delay before continuing
-    // Note: removing this delay will make responses quicker, but will result
-    //  in printf's in this loop breaking JTAG
-    nrf_delay_ms(100);
-
-    // handle states
-    switch(state) {
-      case OFF: {
-        // transition logic
-        if (is_button_pressed(&sensors)) {
-          state = DRIVING;
-        } else {
-          // perform state-specific actions here
-          display_write("OFF", DISPLAY_LINE_0);
-          kobukiDriveDirect(0, 0);
-          state = OFF;
-        }
-        break; // each case needs to end with break!
-      }
-
-      case DRIVING: {
-        // transition logic
-        if (is_button_pressed(&sensors)) {
-          state = OFF;
-        } else if (bump_left) {
-            right_whl_encoder_prev = right_whl_encoder_curr;
-            distance = 0;
-            direction = false;
-            target_angle = -45;
-            current_angle = 0;
-            mpu9250_start_gyro_integration();
-            state = AVOIDL;
-        } else if (bump_right) {
-            right_whl_encoder_prev = right_whl_encoder_curr;
-            distance = 0;
-            direction = false;
-            target_angle = 45;
-            current_angle = 0;
-            mpu9250_start_gyro_integration();
-            state = AVOIDR;
-        } else if (timer_offsets_ready) {
-          timer_offsets_ready = false;
-          target_angle = calculate_target_angle();
-          snprintf(print_str, 16, "%f", target_angle);
-          display_write(print_str, DISPLAY_LINE_1);
-          if (target_angle > 10 || target_angle < -10) {
-            current_angle = 0;
-            mpu9250_start_gyro_integration();
-            state = TURNING;
-          } else {
-            display_write("AHEAD", DISPLAY_LINE_1);
-            state = DRIVING;
-          }
-        } else {
-          // perform state-specific actions here
-          display_write("DRIVING", DISPLAY_LINE_0);
-          kobukiDriveDirect(100, 100);
-          state = DRIVING;
-        }
-        break; // each case needs to end with break!
-      }
-
-      case TURNING: {
-        if (is_button_pressed(&sensors)) {
-          target_angle = 0;
-          current_angle = 0;
-          mpu9250_stop_gyro_integration();
-          state = OFF;
-        } else {
-          //display_write("TURNING", DISPLAY_LINE_0);
-          current_angle = mpu9250_read_gyro_integration().z_axis;
-          snprintf(print_str, 16, "%f", target_angle);
-          display_write(print_str, DISPLAY_LINE_0);
-          snprintf(print_str, 16, "%f", current_angle);
-          display_write(print_str, DISPLAY_LINE_1);
-          if (target_angle > 0 && target_angle - current_angle > 5) {
-            kobukiDriveDirect(-100, 100);
-            state = TURNING;
-          } else if (target_angle < 0 && target_angle - current_angle < -5) {
-            kobukiDriveDirect(100, -100);
-            state = TURNING;
-          } else {
-            mpu9250_stop_gyro_integration();
-            target_angle = 0;
-            current_angle = 0;
-            state = DRIVING;
-          }
-        }
-        break;
-      }
-
-      case AVOIDL: {
-        display_write("AVOIDL", DISPLAY_LINE_0);
-        snprintf(print_str, 16, "%f", current_angle);
-        display_write(print_str, DISPLAY_LINE_1);
-        if (is_button_pressed(&sensors)) {
-          target_angle = 0;
-          current_angle = 0;
-          distance = 0;
-          direction = true;
-          mpu9250_stop_gyro_integration();
-          state = OFF;
-        } else {
-            if (distance < 0.1 && !direction) {
-                kobukiDriveDirect(-100, -100);
-            } else if (current_angle > target_angle) {
-                current_angle = mpu9250_read_gyro_integration().z_axis;
-                direction = true;
-                distance = 0;
-                kobukiDriveDirect(100, -100);
-            } else if (distance < 0.5) {
-                kobukiDriveDirect(100, 100);
-            } else {
-                target_angle = 0;
-                current_angle = 0;
-                distance = 0;
-                mpu9250_stop_gyro_integration();
-                state = DRIVING;
-            }
-        }
-        break;
-      }
-
-      case AVOIDR: {
-        display_write("AVOIDR", DISPLAY_LINE_0);
-        snprintf(print_str, 16, "%f", current_angle);
-        display_write(print_str, DISPLAY_LINE_1);
-        if (is_button_pressed(&sensors)) {
-          target_angle = 0;
-          current_angle = 0;
-          distance = 0;
-          direction = true;
-          mpu9250_stop_gyro_integration();
-          state = OFF;
-        } else {
-            if (distance < 0.1 && !direction) {
-                kobukiDriveDirect(-100, -100);
-            } else if (current_angle < target_angle) {
-                current_angle = mpu9250_read_gyro_integration().z_axis;
-                direction = true;
-                distance = 0;
-                kobukiDriveDirect(100, -100);
-            } else if (distance < 0.5) {
-                kobukiDriveDirect(100, 100);
-            } else {
-                target_angle = 0;
-                current_angle = 0;
-                distance = 0;
-                mpu9250_stop_gyro_integration();
-                state = DRIVING;
-            }
-        }
-        break;
-      }
-
-
-      // add other cases here
-
-    }
   }
 }
