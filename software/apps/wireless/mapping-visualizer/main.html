@@ -7,10 +7,10 @@
     <!-- <script src="showchart.js"></script> -->
 
 </head>
-<body>
-    <h1> Detective Kobi Mapping Visualizer </h1>
+<body style="padding: 2rem">
+    <h1 style="text-align:center"> Detective Kobi Mapping Visualizer </h1>
 
-    <canvas id="myChart" width="400" height="400"></canvas>
+    <canvas id="myChart" height="150%"></canvas>
 
     <script>
       var data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -40,6 +40,7 @@
 
     setInterval(function(){
         $.ajax({url: "http://127.0.0.1:12913", success: function(result){
+          result.data.shift();
           myChart.data.datasets[0].data = result.data;
           myChart.update();
           console.log('[' + new Date() + '] ' + result.data);
