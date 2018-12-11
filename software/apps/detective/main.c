@@ -256,6 +256,8 @@ void TIMER3_IRQHandler(void) {
 
 void servo_start(void) {
     pwm_init();
+    pwm_update_duty_cycle(2.3);
+    nrf_delay_ms(2000);
     NVIC_EnableIRQ(TIMER3_IRQn);
     nrf_timer_mode_set(NRF_TIMER3,NRF_TIMER_MODE_TIMER);
     nrf_timer_bit_width_set(NRF_TIMER3, NRF_TIMER_BIT_WIDTH_32);
@@ -615,6 +617,7 @@ int main(void) {
   printf("Kobuki initialized!\n");
 
   // titlis's init
+  // align servo to the front
   buckler_init();
   servo_start();
   app_timer_init();
@@ -630,10 +633,6 @@ int main(void) {
   bool bump_left, bump_right, avoid_left, avoid_right, direction;
   direction = true; // forward;
   uint16_t right_whl_encoder_curr, right_whl_encoder_prev = 0;
-
-  // align servo to the front
-  pwm_update_duty_cycle(2.3);
-  nrf_delay_ms(2000);
 
   // loop forever, running state machine
   while (1) {
