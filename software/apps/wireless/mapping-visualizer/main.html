@@ -8,13 +8,13 @@
 
 </head>
 <body>
-    <h1> Radar Char </h1>
+    <h1> Detective Kobi Mapping Visualizer </h1>
 
     <canvas id="myChart" width="400" height="400"></canvas>
 
     <script>
       var data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      var labelsArr = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+      var labelsArr = ['FRONT', '30\xB0', '60\xB0', 'RIGHT', '120\xB0', '150\xB0', 'BACK', '210\xB0', '240\xB0', 'LEFT', '300\xB0', '240\xB0'];
 
       var ctx = document.getElementById("myChart");
       var myChart = new Chart(ctx, {
@@ -42,7 +42,7 @@
         $.ajax({url: "http://127.0.0.1:12913", success: function(result){
           myChart.data.datasets[0].data = result.data;
           myChart.update();
-          console.log(result.data);
+          console.log('[' + new Date() + '] ' + result.data);
         }});
      }, 1000);
 
