@@ -1,0 +1,10 @@
+# #!/bin/bash
+#
+# cd ble_rx
+# make flash
+# make rtt
+#
+# cd ..
+# ./data-transfer/server
+#
+# node mapping-visualizer/index.js
