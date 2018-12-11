@@ -237,20 +237,12 @@ float calculate_target_angle(void) {
 
 static float measure_distance(uint16_t current_encoder, uint16_t previous_encoder) {
     const float CONVERSION = 0.00008529;
-    float retval = 0;
-    float retval_edge_case = 0;
-    retval = (current_encoder - previous_encoder)*CONVERSION; 
+    float result_edge_case = 0;
 
-    if (current_encoder < previous_encoder) {
-        retval_edge_case = (0xFFFF - previous_encoder + current_encoder)*CONVERSION;
-        if (retval_edge_case > 1) {
-            return 0;
-        }
-        return retval_edge_case;
+    if (current_encoder < previous_encoder && previous_encoder - current_encoder > 0x7FFF) {
+        return (0xFFFF - previous_encoder + current_encoder)*CONVERSION;
     } 
-
-    return retval;
-
+    return (current_encoder - previous_encoder)*CONVERSION;
 }
 
 int main(void) {
@@ -353,6 +345,7 @@ int main(void) {
     bump_right = sensors.bumps_wheelDrops.bumpRight | sensors.bumps_wheelDrops.bumpCenter;
     right_whl_encoder_curr = sensors.rightWheelEncoder;
     distance = measure_distance(right_whl_encoder_curr, right_whl_encoder_prev);
+    printf("%f, %i, %i\n", distance, right_whl_encoder_curr, right_whl_encoder_prev);
 
     // delay before continuing
     // Note: removing this delay will make responses quicker, but will result
@@ -460,7 +453,6 @@ int main(void) {
             if (bump_left) {
                 right_whl_encoder_prev = right_whl_encoder_curr;
                 kobukiDriveDirect(-100, -100);
-                right_whl_encoder_prev = right_whl_encoder_curr;
                 direction = false;
                 target_angle = -45;
                 current_angle = 0;
@@ -470,14 +462,13 @@ int main(void) {
             } else if (bump_right) {
                 right_whl_encoder_prev = right_whl_encoder_curr;
                 kobukiDriveDirect(-100, -100);
-                right_whl_encoder_prev = right_whl_encoder_curr;
                 direction = false;
                 target_angle = 45;
                 current_angle = 0;
                 mpu9250_stop_gyro_integration();
                 mpu9250_start_gyro_integration();
                 state = AVOIDR;
-            } else if (distance < 0.1 && !direction) {
+            } else if (distance > -0.1 && !direction) {
                 kobukiDriveDirect(-100, -100);
             } else if (current_angle > target_angle) {
                 current_angle = mpu9250_read_gyro_integration().z_axis;
@@ -528,7 +519,7 @@ int main(void) {
                 mpu9250_stop_gyro_integration();
                 mpu9250_start_gyro_integration();
                 state = AVOIDR;
-            } else if (distance < 0.1 && !direction) {
+            } else if (distance > -0.1 && !direction) {
                 kobukiDriveDirect(-100, -100);
             } else if (current_angle < target_angle) {
                 current_angle = mpu9250_read_gyro_integration().z_axis;
